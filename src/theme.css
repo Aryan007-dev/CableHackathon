@@ -1,0 +1,57 @@
+/* Roomie colour scheme: Sage & Linen.
+   Every colour in the app comes from these variables, so changing the scheme
+   means changing this file. SVG attributes accept them too:
+   stroke="var(--color-wall-edge)". The 3D scene reads them at runtime. */
+
+:root {
+  /* Surfaces */
+  --color-canvas: #f7f6f1; /* the plan's paper and the app background */
+  --color-surface: #fbfaf6; /* bars, sidebars, panels, cards */
+  --color-surface-sunken: #efeee7; /* hover states, inputs, chat background */
+  --color-border: #e3e1d8;
+  --color-border-strong: #cfccc0;
+  --color-overlay: rgba(31, 42, 36, 0.55); /* behind modals */
+
+  /* Text */
+  --color-ink: #1f2a24;
+  --color-ink-muted: #6b736c;
+  --color-ink-faint: #9aa19b;
+
+  /* Accent: "you are here" (active tool, active view, selection) */
+  --color-accent: #4f6b55;
+  --color-accent-hover: #435c49;
+  --color-accent-contrast: #ffffff;
+  --color-accent-soft: #e7ede4;
+
+  /* Primary call to action (Sign up, submit) */
+  --color-primary: #1f2a24;
+  --color-primary-hover: #33403a;
+  --color-primary-contrast: #ffffff;
+
+  /* Warnings and things that need attention */
+  --color-warning: #b5533c;
+  --color-warning-soft: #f6e4dd;
+
+  /* 2D plan */
+  --color-grid-minor: #e2e4da;
+  --color-grid-major: #c9cdbf;
+  --color-room-floor: #eef1ea;
+  --color-wall-edge: #2e3a33;
+  --color-wall-core: #d9ded3;
+  --color-corner: #b5533c;
+  --color-drawing: #4f6b55; /* previews while drawing walls and rooms */
+  --color-selection: #4f6b55;
+  --color-dimension: #4f6b55;
+  --color-dimension-soft: #e7ede4;
+  --color-dimension-text: #3e5644;
+  --color-symbol-ink: #3e4a43; /* furniture symbols */
+  --color-symbol-fill: #ffffff;
+  --color-plant: #e4ede0;
+  --color-rug: #f1ece0;
+
+  /* 3D view */
+  --color-scene-background: #f7f6f1;
+  --color-scene-ground: #dcdfd3;
+  --color-scene-handle: #4f6b55;
+  --color-scene-handle-alt: #b5533c;
+}

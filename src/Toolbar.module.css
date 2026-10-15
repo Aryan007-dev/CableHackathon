@@ -1,0 +1,160 @@
+/* The editor's top bar: three areas (plan title | view controls | file & account).
+   Related buttons share one outlined group; the accent only marks what's active.
+   Colours come from theme.css. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  height: 56px;
+  padding: 0 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-ink);
+  font-size: 14px;
+}
+
+.left,
+.center,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.left {
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Both auto margins share the free space, so the view controls sit in the middle. */
+.center,
+.right {
+  margin-left: auto;
+}
+
+.logo {
+  padding-right: 12px;
+  border-right: 1px solid var(--color-border);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.titleName {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.titleNote {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* One outline around related buttons. overflow: hidden keeps the inner
+   buttons' backgrounds inside the rounded corners. */
+.group {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* A divider between neighbouring buttons in a group. */
+.btn + .btn {
+  border-left: 1px solid var(--color-border);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-surface-sunken);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.btn[data-active="true"],
+.btn[data-active="true"]:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+/* Units: an icon and a native select dressed as a group. */
+.units {
+  align-items: center;
+  gap: 4px;
+  padding-left: 10px;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.select {
+  height: 100%;
+  padding: 0 8px 0 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.email {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.primary {
+  height: 36px;
+  padding: 0 14px;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 10px;
+  color: var(--color-primary-contrast);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: var(--color-primary-hover);
+}

@@ -1,0 +1,163 @@
+/* Overlay backdrop - full screen, dimmed, centered */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* Modal card */
+.modal {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  padding: 2rem;
+  border-radius: 12px;
+  min-width: 400px;
+  max-width: 90%;
+  position: relative;
+  box-shadow: 0 12px 32px rgba(31, 42, 36, 0.18);
+}
+
+/* Close button (X) */
+.closeButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--color-ink-faint);
+  transition: color 0.2s;
+}
+
+.closeButton:hover {
+  color: var(--color-ink);
+}
+
+/* Title */
+.title {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: var(--color-ink);
+}
+
+/* Mode toggle buttons container */
+.modeTabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Individual tab button */
+.modeTab {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* Active tab */
+.modeTab.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+/* Inactive tab */
+.modeTab.inactive {
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.modeTab.inactive:hover {
+  background: var(--color-accent-soft);
+}
+
+/* Form */
+.form {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Form field wrapper */
+.formField {
+  margin-bottom: 1rem;
+}
+
+/* Label */
+.label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+/* Input */
+.input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* Helper text under input */
+.helperText {
+  color: var(--color-ink-muted);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* Error message box */
+.error {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  border: 1px solid var(--color-warning);
+}
+
+/* Submit button */
+.submitButton {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.submitButton:disabled {
+  background: var(--color-border-strong);
+  cursor: not-allowed;
+}

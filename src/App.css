@@ -1,0 +1,63 @@
+.editor-app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.editor-workspace {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+}
+
+.editor-viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  background: var(--color-canvas);
+}
+
+/* Floating properties panel for the selected 3D object. */
+.inspector-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(31, 42, 36, 0.08);
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+/* Inspector renders nothing while nothing is selected. */
+.inspector-panel:empty {
+  display: none;
+}
+
+.inspector-panel button {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.inspector-panel button:hover {
+  background: var(--color-surface-sunken);
+}
