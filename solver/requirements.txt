@@ -1,0 +1,7 @@
+shapely>=2.0
+networkx>=3.0
+numpy>=1.24
+matplotlib>=3.7
+geopandas>=0.14
+opencv-python-headless>=4.8
+scipy>=1.11

@@ -1,19 +1,7 @@
 import { useTexture } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import { asset } from "./assets";
-const FLOOR_TEXTURES = {
-  laminate: {
-    map: asset("/textures/laminate_floor_02_diff_2k.jpg"),
-    normalMap: asset("/textures/laminate_floor_02_nor_gl_2k.jpg"),
-    roughnessMap: asset("/textures/laminate_floor_02_rough_2k.jpg"),
-  },
-  concrete: {
-    map: asset("/textures/concrete_tile_facade_diff_2k.jpg"),
-    normalMap: asset("/textures/concrete_tile_facade_nor_gl_2k.jpg"),
-    roughnessMap:asset( "/textures/concrete_tile_facade_arm_2k.jpg"),
-  },
-} as const;
+import { FLOOR_TEXTURES } from "./floorTextures";
 
 type FloorAssetId = keyof typeof FLOOR_TEXTURES;
 

@@ -55,3 +55,20 @@
   --color-scene-handle: #4f6b55;
   --color-scene-handle-alt: #b5533c;
 }
+
+/* Cable Ring plans (src/cable): one colour per hub, used for its ring, its
+   hub marker, its nodes and a tint on the rooms it serves. */
+:root {
+  --color-hub-1: #d1495b;
+  --color-hub-2: #2e86ab;
+  --color-hub-3: #e8a33d;
+  --color-hub-4: #6a4c93;
+  --color-hub-5: #3b9b6b;
+  --color-hub-6: #c46d2b;
+  --color-cable-room: #f1f0ea; /* rooms without a node: bathrooms, stairs, balconies */
+  --color-cable-wall: #2e3a33;
+  --color-cable-wall-3d: #e9e6dc;
+  --color-cable-slab: #cfccc0; /* the 3D floor slab's edge */
+  --color-cable-window: #9cc3d5;
+  --color-cable-label: #1f2a24;
+}

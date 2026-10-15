@@ -5,6 +5,8 @@ import type { Patch } from "immer";
 import { supabase } from "./supabase";
 import { PX_PER_METER } from "./units";
 import type { LengthUnit } from "./units";
+import { DEFAULT_LAYERS } from "./cable/cablePlan";
+import type { CableLayers, CablePlan } from "./cable/cablePlan";
 // This closes an import cycle: store -> planToScene -> planGeometry -> store,
 // which needs OPENING_DEFAULTS from here. It is safe because nothing in that
 // chain reads an imported value while the modules are still evaluating
@@ -196,6 +198,9 @@ interface SceneDocument {
 
     // Snapshot of floorPlan + planWalls the current 3D plan walls were built from.
     builtPlanKey?: string;
+
+    // A solved Cable Ring plan shown under the 2D plan and in 3D (read-only).
+    cablePlan: CablePlan | null;
 }
 
 // Saves made before a field existed won't have it; fill the gaps so the UI
@@ -213,6 +218,7 @@ export function normalizeDoc(raw: SceneDocument & { rectangles?: Rectangle[] }):
         planWalls,
         openings: fitOpenings(raw.openings ?? [], planWalls),
         planFurniture: raw.planFurniture ?? [],
+        cablePlan: raw.cablePlan ?? null,
     };
 }
 
@@ -245,6 +251,24 @@ interface EditorState {
     addOpening: (opening: Opening) => void;
     addPlanFurniture: (item: PlanFurniture) => void;
     buildRoomFromPlan: () => void;
+
+    // Show a solved cable plan (one undo step), or remove it.
+    importCablePlan: (plan: CablePlan) => void;
+    clearCablePlan: () => void;
+
+    // Session state: which parts of the cable plan are drawn (not saved, not undone).
+    cableLayers: CableLayers;
+    setCableLayer: <K extends keyof CableLayers>(layer: K, value: CableLayers[K]) => void;
+    // The hub being inspected (others are dimmed), or null for all.
+    cableFocus: string | null;
+    setCableFocus: (hubId: string | null) => void;
+    // A solve in progress ("Routing plan 2814…"), or the last solve's error.
+    cableBusy: string | null;
+    cableError: string | null;
+    setCableStatus: (busy: string | null, error?: string | null) => void;
+    // Bumped to ask the 3D view for a PNG of what it shows.
+    screenshotRequest: number;
+    requestScreenshot: () => void;
 
     mode: "translate" | "rotate" | "scale";
     setMode: (m: "translate" | "rotate" | "scale") => void;
@@ -289,6 +313,7 @@ export const useEditor = create<EditorState>((set, get) => {
             planWalls: [],
             openings: [],
             planFurniture: [],
+            cablePlan: null,
         },
 
         dismissedTips: [],
@@ -303,6 +328,30 @@ export const useEditor = create<EditorState>((set, get) => {
         currentProjectName: null,
 
         setCameraMode: (m) => set({ cameraMode: m }),
+
+        cableLayers: DEFAULT_LAYERS,
+        setCableLayer: (layer, value) => set((s) => ({ cableLayers: { ...s.cableLayers, [layer]: value } })),
+        cableFocus: null,
+        setCableFocus: (hubId) => set({ cableFocus: hubId }),
+        cableBusy: null,
+        cableError: null,
+        setCableStatus: (busy, error = null) => set({ cableBusy: busy, cableError: error }),
+        screenshotRequest: 0,
+        requestScreenshot: () => set((s) => ({ screenshotRequest: s.screenshotRequest + 1 })),
+
+        importCablePlan: (plan) => {
+            commit((d) => {
+                d.cablePlan = plan;
+            });
+            set({ cableFocus: null });
+        },
+
+        clearCablePlan: () => {
+            commit((d) => {
+                d.cablePlan = null;
+            });
+            set({ cableFocus: null });
+        },
 
         units: loadUnits(),
         setUnits: (u) => {

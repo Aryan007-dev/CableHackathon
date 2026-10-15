@@ -26,6 +26,8 @@ export type ResPlanPlanSummary = {
 
 export type ResPlanIndex = {
   source: string;
+  /** Names the upload the dev server kept, so the cable solver can read a plan from it. */
+  datasetId?: string;
   planCount: number;
   /** Room category -> total rooms across the dataset, most common first. */
   categories: Record<string, number>;

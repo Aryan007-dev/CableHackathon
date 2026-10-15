@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useEditor, OPENING_DEFAULTS } from "../store";
 import type { PlanWall } from "../store";
@@ -32,6 +32,11 @@ import {
 } from "./planSelection";
 import type { PlanItem, PlanSnapshot } from "./planSelection";
 import { usePanZoom } from "./usePanZoom";
+import { frameKey, toPlan } from "../cable/cablePlan";
+
+// The cable panel's width plus its gap (src/cable/CablePanel.module.css).
+const CABLE_PANEL_WIDTH = 312;
+import { CableOverlayLayer, CableRoomsLayer } from "./layers/CablePlanLayer";
 import { usePlanKeyboard } from "./usePlanKeyboard";
 import AngleIndicator from "./layers/AngleIndicator";
 import FurnitureLayer from "./layers/FurnitureLayer";
@@ -67,8 +72,26 @@ function FloorPlan() {
     const dismissedTips = useEditor((s) => s.dismissedTips);
     const dismissTip = useEditor((s) => s.dismissTip);
     const grid = PLAN_GRID[units];
+    const cablePlan = useEditor((s) => s.doc.cablePlan);
+    const cableLayers = useEditor((s) => s.cableLayers);
 
-    const { svgRef, scale, pan, isPanning, spaceHeld, zoomAtCenter, toWorld, startPan, updatePan, endPan } = usePanZoom();
+    const { svgRef, scale, pan, isPanning, spaceHeld, zoomAtCenter, fitTo, toWorld, startPan, updatePan, endPan } = usePanZoom();
+
+    // Frame a newly imported cable plan, but not a re-solve of the same one
+    // (a dragged hub comes back as a new object with the same extent).
+    const cableExtent = cablePlan ? frameKey(cablePlan) : null;
+    const latestCable = useRef(cablePlan);
+    useEffect(() => {
+        latestCable.current = cablePlan;
+    });
+    useEffect(() => {
+        const plan = latestCable.current;
+        if (!plan) return;
+        const { min_x, min_y, max_x, max_y } = plan.bounds;
+        const [x1, y1] = toPlan(plan, [min_x, max_y]);
+        const [x2, y2] = toPlan(plan, [max_x, min_y]);
+        fitTo(x1, y1, x2, y2, 60, CABLE_PANEL_WIDTH); // clear of the cable panel
+    }, [cableExtent, fitTo]);
 
     const [activeTool, setActiveTool] = useState<Tool>("select");
 
@@ -572,6 +595,7 @@ function FloorPlan() {
 
                 <svg
                     ref={svgRef}
+                    data-plan-svg // found by the cable plan's PNG/SVG export
                     width="100%"
                     height="100%"
                     style={{
@@ -595,6 +619,8 @@ function FloorPlan() {
                     {/* Layers are drawn in order: later ones sit on top. */}
                     <g transform={`translate(${pan[0]} ${pan[1]}) scale(${scale})`}>
                         <GridLayer minor={grid.minor} major={grid.major} />
+
+                        {cablePlan && <CableRoomsLayer plan={cablePlan} layers={cableLayers} />}
 
                         <WallsLayer floors={displayedRectangles} points={points} closeOutline={!!polylineRectangle} walls={walls} />
 
@@ -640,7 +666,15 @@ function FloorPlan() {
                             units={units}
                         />
 
-                        <RoomLabels rectangles={displayedRectangles} units={units} />
+                        <RoomLabels
+                            rectangles={displayedRectangles}
+                            units={units}
+                            showArea={!(cablePlan?.source?.kind === "drawn" && cableLayers.labels)}
+                        />
+
+                        {cablePlan && (
+                            <CableOverlayLayer plan={cablePlan} layers={cableLayers} units={units} interactive={activeTool === "select"} />
+                        )}
 
                         <FurnitureLayer
                             furniture={furniture}

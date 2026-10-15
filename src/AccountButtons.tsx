@@ -28,8 +28,8 @@ export default function AccountButtons() {
       ) : (
         <>
           <div className={styles.group}>
-            <button type="button" className={styles.btn} onClick={() => setAuthMode('login')}>
-              <LogIn {...ICON} /> Log in
+            <button type="button" className={styles.btn} onClick={() => setAuthMode('login')} title="Log in">
+              <LogIn {...ICON} /> <span className={styles.label}>Log in</span>
             </button>
           </div>
           <button type="button" className={styles.primary} onClick={() => setAuthMode('signup')}>

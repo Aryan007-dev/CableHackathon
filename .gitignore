@@ -40,3 +40,7 @@ ResPlan.zip
 resplan-data/
 !scripts/resplan/tests/fixtures/*.pkl
 __pycache__/
+# ResPlan dataset (300 MB pickle) and solver outputs/venv
+archive (1)/
+solver/.venv/
+solver/out/

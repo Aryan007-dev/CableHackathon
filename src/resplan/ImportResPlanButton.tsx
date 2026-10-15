@@ -26,7 +26,7 @@ export default function ImportResPlanButton() {
           onClick={() => setOpen(true)}
           title={selected ? `Selected: ${planLabel(selected)}` : "Upload the ResPlan dataset and pick a floor plan"}
         >
-          <DatabaseZap {...ICON} /> Import ResPlan Dataset
+          <DatabaseZap {...ICON} /> <span className={styles.label}>Import ResPlan Dataset</span>
         </button>
         {selected && (
           <button type="button" className={styles.btn} data-active="true" onClick={() => setOpen(true)} aria-label={`Selected ResPlan plan: ${planLabel(selected)}`}>

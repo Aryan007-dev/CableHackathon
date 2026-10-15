@@ -17,9 +17,9 @@ function DimensionLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number;
     );
 }
 
-// One rectangle room's labels: its area in the middle, its width above and
-// its height to the right.
-function RoomLabel({ r, units }: { r: Rectangle; units: LengthUnit }) {
+// One rectangle room's labels: its area in the middle (unless something else
+// labels the room there), its width above and its height to the right.
+function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; showArea: boolean }) {
     const left = Math.min(r.x1, r.x2);
     const right = Math.max(r.x1, r.x2);
     const top = Math.min(r.y1, r.y2);
@@ -33,10 +33,14 @@ function RoomLabel({ r, units }: { r: Rectangle; units: LengthUnit }) {
     return (
         <g>
             {/* Room area */}
-            <rect x={centerX - 95} y={centerY - 24} width={190} height={48} fill="var(--color-surface)" stroke="var(--color-border-strong)" strokeWidth={1} />
-            <text x={centerX} y={centerY + 8} textAnchor="middle" fill="var(--color-dimension-text)" fontSize={22} fontWeight="bold" fontFamily="monospace">
-                {formatArea(widthInMeters * heightInMeters, units)}
-            </text>
+            {showArea && (
+                <>
+                    <rect x={centerX - 95} y={centerY - 24} width={190} height={48} fill="var(--color-surface)" stroke="var(--color-border-strong)" strokeWidth={1} />
+                    <text x={centerX} y={centerY + 8} textAnchor="middle" fill="var(--color-dimension-text)" fontSize={22} fontWeight="bold" fontFamily="monospace">
+                        {formatArea(widthInMeters * heightInMeters, units)}
+                    </text>
+                </>
+            )}
 
             {/* Top width dimension */}
             <DimensionLine x1={left} y1={top - DIMENSION_OFFSET} x2={right} y2={top - DIMENSION_OFFSET} />
@@ -106,11 +110,13 @@ function RoomLabel({ r, units }: { r: Rectangle; units: LengthUnit }) {
     );
 }
 
-export default function RoomLabels({ rectangles, units }: { rectangles: Rectangle[]; units: LengthUnit }) {
+// showArea: false while a routed cable plan of this drawing labels each room
+// (name, area, node, hub) at the same spot.
+export default function RoomLabels({ rectangles, units, showArea = true }: { rectangles: Rectangle[]; units: LengthUnit; showArea?: boolean }) {
     return (
         <>
             {rectangles.map((r, i) => (
-                <RoomLabel key={`rectangle-${i}`} r={r} units={units} />
+                <RoomLabel key={`rectangle-${i}`} r={r} units={units} showArea={showArea} />
             ))}
         </>
     );

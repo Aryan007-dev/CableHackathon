@@ -18,6 +18,7 @@ import Furniture from "./furniture";
 import Floor from "./floor";
 import { themeColor } from "./themeColor";
 import WallFader from "./WallFader";
+import CablePlan3D from "./cable/CablePlan3D";
  import { footprintsOverlap } from "./2d/planGeometry"; 
 // A floor footprint: the corners of a convex shape as [x, z], in order around it.
 type Footprint = [number, number][];
@@ -162,6 +163,7 @@ function Scene() {
   const cameraMode = useEditor((s) => s.cameraMode)
   const updateNode = useEditor((s) => s.updateNode)
   const nodes = useEditor((s) => s.doc.nodes);
+  const hasCablePlan = useEditor((s) => s.doc.cablePlan !== null);
   const select = useEditor((s) => s.select);
   const selectedIds = useEditor((s) => s.selectedIds);
   const updateTransform = useEditor((s) => s.updateTransform);
@@ -319,10 +321,14 @@ function Scene() {
         <WasdCamera />
         <WallFader />
 
-        <ContactShadows position={[0, 0., 0]} opacity={2} scale={10} blur={2} />
+        {/* Grounds the editor's own furniture at the origin; a cable plan has its own slab. */}
+        {!hasCablePlan && <ContactShadows position={[0, 0., 0]} opacity={2} scale={10} blur={2} />}
 
         <Suspense fallback={null}>
           <Environment preset="apartment" />
+
+          {/* An imported Cable Ring plan (read-only), if there is one. */}
+          <CablePlan3D />
 
           {Object.values(nodes).map((node) => {
             if (node.type === "wall") {

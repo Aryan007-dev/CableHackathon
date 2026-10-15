@@ -1,0 +1,16 @@
+/* The 2D ring animation: dashes marching along each ring, hub first. */
+@keyframes cable-flow {
+  to {
+    stroke-dashoffset: -24; /* one dash + gap, so the loop is seamless */
+  }
+}
+
+.cable-pulse {
+  animation: cable-flow 0.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cable-pulse {
+    animation: none;
+  }
+}

@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, FileArchive, Loader2, RefreshCw, Search, Upload, X } from "lucide-react";
+import { AlertCircle, Cable, Check, FileArchive, Loader2, RefreshCw, Search, Upload, X } from "lucide-react";
+
+import { routeDatasetPlan } from "../cable/cableActions";
+import { useEditor } from "../store";
 
 import { useResPlan } from "./resplanStore";
 import { categoryLabel, filterPlans, formatBytes, planLabel, roomSummary, validateDatasetFile } from "./planUtils";
@@ -54,7 +57,7 @@ export default function ImportResPlanModal({ onClose }: Props) {
           </button>
         </header>
 
-        {status === "ready" && index ? <PlanBrowser /> : <UploadStep />}
+        {status === "ready" && index ? <PlanBrowser onRouted={onClose} /> : <UploadStep />}
       </div>
     </div>
   );
@@ -174,7 +177,7 @@ function UploadStep() {
 // Step 2: browse, search and select
 // ---------------------------------------------------------------------------
 
-function PlanBrowser() {
+function PlanBrowser({ onRouted }: { onRouted: () => void }) {
   const index = useResPlan((s) => s.index)!;
   const file = useResPlan((s) => s.file);
   const query = useResPlan((s) => s.query);
@@ -235,7 +238,7 @@ function PlanBrowser() {
           )}
         </div>
 
-        <PlanPreview plan={selected} />
+        <PlanPreview plan={selected} datasetId={index.datasetId} onRouted={onRouted} />
       </div>
     </div>
   );
@@ -336,7 +339,12 @@ function VirtualPlanList({ plans, selectedPlanIndex, onSelect }: ListProps) {
   );
 }
 
-function PlanPreview({ plan }: { plan: ResPlanPlanSummary | null }) {
+type PreviewProps = { plan: ResPlanPlanSummary | null; datasetId?: string; onRouted: () => void };
+
+function PlanPreview({ plan, datasetId, onRouted }: PreviewProps) {
+  const busy = useEditor((s) => s.cableBusy);
+  const cableError = useEditor((s) => s.cableError);
+
   if (!plan) {
     return (
       <aside className={styles.preview} aria-label="Selected plan">
@@ -373,10 +381,27 @@ function PlanPreview({ plan }: { plan: ResPlanPlanSummary | null }) {
         <h3 className={styles.previewTitle}>{planLabel(plan)}</h3>
       </div>
 
-      <div className={styles.placeholder} aria-hidden="true">
-        Floor-plan preview
-        <span>Drawing the plan comes in the next stage</span>
-      </div>
+      {/* Route this plan's cables: the dev server kept the upload, so only the
+          plan's position is sent. The result opens on the plan, with the
+          cable panel. */}
+      <button
+        type="button"
+        className={styles.primaryBtn}
+        disabled={!datasetId || !!busy}
+        title={datasetId ? "Solve this plan's Cable Ring and show it" : "Upload the dataset again to route cables"}
+        onClick={async () => {
+          if (datasetId && (await routeDatasetPlan(datasetId, plan.index, planLabel(plan)))) onRouted();
+        }}
+      >
+        {busy ? <Loader2 size={16} strokeWidth={1.75} className={styles.spin} /> : <Cable size={16} strokeWidth={1.75} />}{" "}
+        {busy ? "Routing cables…" : "Route cables for this plan"}
+      </button>
+      {cableError && !busy && (
+        <div className={styles.error} role="alert">
+          <AlertCircle size={16} strokeWidth={1.75} />
+          <span>{cableError}</span>
+        </div>
+      )}
 
       <dl className={styles.meta}>
         {rows.map(([k, v]) => (

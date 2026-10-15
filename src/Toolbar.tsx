@@ -2,6 +2,7 @@ import { Box, Camera, FolderOpen, Redo2, Ruler, Save, Square, SquarePlus, Undo2 
 
 import AccountButtons from "./AccountButtons";
 import ImportResPlanButton from "./resplan/ImportResPlanButton";
+import CablePlanControls from "./cable/CablePlanControls";
 import { useEditor, normalizeDoc } from "./store";
 import styles from "./Toolbar.module.css";
 import type { LengthUnit } from "./units";
@@ -57,7 +58,7 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
     <header className={styles.bar}>
       {/* LEFT: brand + plan title */}
       <div className={styles.left}>
-        <span className={styles.logo}>Roomie</span>
+        <span className={styles.logo}>GridMind </span>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
           <span className={styles.titleNote}>Save keeps a copy in this browser</span>
@@ -109,11 +110,13 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
           </select>
         </label>
 
+        <CablePlanControls />
+
         {/* 3D-only controls */}
         {view === "3d" && (
           <div className={styles.group} role="group" aria-label="3D view">
-            <button type="button" className={styles.btn} onClick={() => addFloor("Laminate Floor")}>
-              <SquarePlus {...ICON} /> Add floor
+            <button type="button" className={styles.btn} onClick={() => addFloor("Laminate Floor")} title="Add floor">
+              <SquarePlus {...ICON} /> <span className={styles.label}>Add floor</span>
             </button>
             <button
               type="button"
@@ -123,7 +126,7 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
               title="Look straight down at the room"
               onClick={() => setCameraMode(cameraMode === "topdown" ? "perspective" : "topdown")}
             >
-              <Camera {...ICON} /> Top-down
+              <Camera {...ICON} /> <span className={styles.label}>Top-down</span>
             </button>
           </div>
         )}
@@ -133,11 +136,11 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
       <div className={styles.right}>
         <ImportResPlanButton />
         <div className={styles.group} role="group" aria-label="Plan file">
-          <button type="button" className={styles.btn} onClick={save}>
-            <Save {...ICON} /> Save
+          <button type="button" className={styles.btn} onClick={save} title="Save in this browser">
+            <Save {...ICON} /> <span className={styles.label}>Save</span>
           </button>
-          <button type="button" className={styles.btn} onClick={load}>
-            <FolderOpen {...ICON} /> Load
+          <button type="button" className={styles.btn} onClick={load} title="Load from this browser">
+            <FolderOpen {...ICON} /> <span className={styles.label}>Load</span>
           </button>
         </div>
         <AccountButtons />
