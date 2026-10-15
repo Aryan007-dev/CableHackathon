@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { resplanPlugin } from "./scripts/resplan/vitePlugin.ts";
 
 // Chat model is served through an OpenAI-compatible endpoint.
 // Provider is selected using CHAT_PROVIDER.
@@ -114,6 +115,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      resplanPlugin(),
 
       {
         name: "ai-chat-proxy",

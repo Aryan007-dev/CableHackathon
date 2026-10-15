@@ -31,3 +31,12 @@ dist-ssr
 public/
 # Claude Code local settings
 .claude/settings.local.json
+
+# ResPlan dataset: never commit the full dataset (~100 MB zip / ~260 MB pickle).
+# Only the tiny test fixture is tracked.
+ResPlan.zip
+*.pkl
+*.pickle
+resplan-data/
+!scripts/resplan/tests/fixtures/*.pkl
+__pycache__/
