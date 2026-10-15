@@ -1,6 +1,7 @@
 import { Box, Camera, FolderOpen, Redo2, Ruler, Save, Square, SquarePlus, Undo2 } from "lucide-react";
 
 import AccountButtons from "./AccountButtons";
+import ImportResPlanButton from "./resplan/ImportResPlanButton";
 import { useEditor, normalizeDoc } from "./store";
 import styles from "./Toolbar.module.css";
 import type { LengthUnit } from "./units";
@@ -130,6 +131,7 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
 
       {/* RIGHT: the plan file and your account */}
       <div className={styles.right}>
+        <ImportResPlanButton />
         <div className={styles.group} role="group" aria-label="Plan file">
           <button type="button" className={styles.btn} onClick={save}>
             <Save {...ICON} /> Save

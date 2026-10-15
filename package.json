@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --test \"scripts/resplan/tests/*.test.ts\" && python3 -m unittest discover -s scripts/resplan/tests",
     "preview": "vite preview",
     "catalog": "node scripts/catalog-pipeline.mjs"
   },
