@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { Box, Camera, FolderOpen, Redo2, Ruler, Save, Square, SquarePlus, Undo2 } from "lucide-react";
 
 import AccountButtons from "./AccountButtons";
-import ImportResPlanButton from "./resplan/ImportResPlanButton";
-import CablePlanControls from "./cable/CablePlanControls";
-import { useEditor, normalizeDoc } from "./store";
+import { useAuth } from "./AuthContext";
+import ProjectsPanel from "./ProjectsPanel";
+import { useEditor } from "./store";
 import styles from "./Toolbar.module.css";
 import type { LengthUnit } from "./units";
 
@@ -17,12 +18,18 @@ type ToolbarProps = {
 const ICON = { size: 18, strokeWidth: 1.75 } as const;
 
 function Toolbar({ view, onViewChange }: ToolbarProps) {
-  const doc = useEditor((s) => s.doc);
+  const { user } = useAuth();
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const canUndo = useEditor((s) => s.undoStack.length > 0);
   const canRedo = useEditor((s) => s.redoStack.length > 0);
   const projectName = useEditor((s) => s.currentProjectName);
+  const projectId = useEditor((s) => s.currentProjectId);
+  const saveProject = useEditor((s) => s.saveProject);
+
+  // Which project modal is open, plus a short-lived status for quick saves.
+  const [panel, setPanel] = useState<"save" | "open" | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const addNode = useEditor((s) => s.addNode);
   const cameraMode = useEditor((s) => s.cameraMode);
@@ -46,22 +53,35 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
       length: 4,
     });
 
-  const save = () => localStorage.setItem("scene", JSON.stringify(doc));
+  const flash = (msg: string) => {
+    setStatus(msg);
+    setTimeout(() => setStatus(null), 2500);
+  };
 
-  const load = () => {
-    const text = localStorage.getItem("scene");
-    if (!text) return;
-    useEditor.setState({ doc: normalizeDoc(JSON.parse(text)), undoStack: [], redoStack: [], selectedIds: [] });
+  // Already a saved project: one click saves in place. Otherwise ask for a name.
+  const save = async () => {
+    if (user && projectId && projectName) {
+      try {
+        await saveProject(projectName);
+        flash("Saved");
+      } catch (err) {
+        flash(err instanceof Error ? err.message : "Save failed");
+      }
+    } else {
+      setPanel("save");
+    }
   };
 
   return (
     <header className={styles.bar}>
       {/* LEFT: brand + plan title */}
       <div className={styles.left}>
-        <span className={styles.logo}>GridMind </span>
+        <span className={styles.logo}>Roomie</span>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
-          <span className={styles.titleNote}>Save keeps a copy in this browser</span>
+          <span className={styles.titleNote}>
+            {status ?? (user ? (projectId ? "Saved to your account" : "Not saved yet") : "Log in to save your plans")}
+          </span>
         </div>
       </div>
 
@@ -110,13 +130,11 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
           </select>
         </label>
 
-        <CablePlanControls />
-
         {/* 3D-only controls */}
         {view === "3d" && (
           <div className={styles.group} role="group" aria-label="3D view">
-            <button type="button" className={styles.btn} onClick={() => addFloor("Laminate Floor")} title="Add floor">
-              <SquarePlus {...ICON} /> <span className={styles.label}>Add floor</span>
+            <button type="button" className={styles.btn} onClick={() => addFloor("Laminate Floor")}>
+              <SquarePlus {...ICON} /> Add floor
             </button>
             <button
               type="button"
@@ -126,7 +144,7 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
               title="Look straight down at the room"
               onClick={() => setCameraMode(cameraMode === "topdown" ? "perspective" : "topdown")}
             >
-              <Camera {...ICON} /> <span className={styles.label}>Top-down</span>
+              <Camera {...ICON} /> Top-down
             </button>
           </div>
         )}
@@ -134,17 +152,18 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
 
       {/* RIGHT: the plan file and your account */}
       <div className={styles.right}>
-        <ImportResPlanButton />
         <div className={styles.group} role="group" aria-label="Plan file">
-          <button type="button" className={styles.btn} onClick={save} title="Save in this browser">
-            <Save {...ICON} /> <span className={styles.label}>Save</span>
+          <button type="button" className={styles.btn} onClick={() => void save()}>
+            <Save {...ICON} /> Save
           </button>
-          <button type="button" className={styles.btn} onClick={load} title="Load from this browser">
-            <FolderOpen {...ICON} /> <span className={styles.label}>Load</span>
+          <button type="button" className={styles.btn} onClick={() => setPanel("open")}>
+            <FolderOpen {...ICON} /> Load
           </button>
         </div>
         <AccountButtons />
       </div>
+
+      {panel && <ProjectsPanel mode={panel} onClose={() => setPanel(null)} />}
     </header>
   );
 }
