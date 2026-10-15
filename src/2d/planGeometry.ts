@@ -2,7 +2,7 @@
 // plan pixels unless a name says metres.
 
 import { OPENING_DEFAULTS } from "../store";
-import type { Opening, PlanFurniture, PlanWall } from "../store";
+import type { Opening, PlanFurniture, PlanWall, PlanWire, PlanWireConnection } from "../store";
 import { PX_PER_METER } from "../units";
 import { CLOSE_DIST, HIT_PX, WALL_EDGE_WIDTH } from "./planConstants";
 
@@ -57,6 +57,37 @@ export const resolvePoint = (x: number, y: number, points: Point[]): Point => {
 
     return [x, y];
 };
+
+export function snapWireEndpoint(
+    target: Point,
+    walls: PlanWall[],
+    wires: PlanWire[],
+    excludeWireIds?: ReadonlySet<string>,
+    tolerance = CLOSE_DIST,
+): { point: Point; connection?: PlanWireConnection } | null {
+    const candidates: { point: Point; connection: PlanWireConnection; distance: number }[] = [];
+    const consider = (point: Point, connection: PlanWireConnection) => {
+        const d = distance(target, point);
+        if (d <= tolerance) candidates.push({ point, connection, distance: d });
+    };
+
+    walls.forEach((wall) => {
+        consider(wall.a, { kind: "wall", wallId: wall.id, end: "a" });
+        consider(wall.b, { kind: "wall", wallId: wall.id, end: "b" });
+    });
+    wires.forEach((wire) => {
+        if (excludeWireIds?.has(wire.id)) return;
+        consider(wire.start, { kind: "wire", wireId: wire.id, end: "start" });
+        consider(wire.end, { kind: "wire", wireId: wire.id, end: "end" });
+    });
+
+    candidates.sort((a, b) =>
+        a.distance - b.distance ||
+        (a.connection.kind === "wire" ? -1 : 1)
+    );
+    const best = candidates[0];
+    return best ? { point: best.point, connection: best.connection } : null;
+}
 
 // If the polyline's four points are the corners of an axis-aligned rectangle,
 // reuse the same visual renderer as the Rectangle tool. The original points

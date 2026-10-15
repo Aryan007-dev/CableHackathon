@@ -1,13 +1,13 @@
 import { useState } from "react";
 
 import { useEditor, OPENING_DEFAULTS } from "../store";
-import type { PlanWall } from "../store";
+import type { PlanWall, PlanWire } from "../store";
 import { InfoBox } from "../InfoBox";
 import FurnitureLibraryPanel from "./FurnitureLibraryPanel";
 import ToolSideBar from "./ToolSideBar";
 import type { Tool } from "./ToolSideBar";
 import { SYMBOL_BY_ID } from "./symbolLibrary";
-import { HIT_PX, PLAN_GRID } from "./planConstants";
+import { CLOSE_DIST, HIT_PX, PLAN_GRID } from "./planConstants";
 import {
     distance,
     findOpeningSpot,
@@ -18,16 +18,21 @@ import {
     resolvePoint,
     rotateHandlePoints,
     snap,
+    snapWireEndpoint,
 } from "./planGeometry";
 import type { OpeningSpot, Point } from "./planGeometry";
 import {
     deleteItems,
+    connectedJunctionEndpoints,
+    connectedWireIds,
     flipDoors,
     hitTest,
     itemExists,
     itemKey,
     itemsInBox,
     moveSelection,
+    moveWireEndpoint,
+    moveWireJunction,
     rotateFurniture,
 } from "./planSelection";
 import type { PlanItem, PlanSnapshot } from "./planSelection";
@@ -41,6 +46,7 @@ import OpeningsLayer from "./layers/OpeningsLayer";
 import RoomLabels from "./layers/RoomLabels";
 import SelectionLayer from "./layers/SelectionLayer";
 import WallsLayer from "./layers/WallsLayer";
+import WireLayer from "./layers/WireLayer";
 
 type SvgPointerEvent = React.PointerEvent<SVGSVGElement>;
 
@@ -58,6 +64,7 @@ function FloorPlan() {
     const storedWalls = useEditor((s) => s.doc.planWalls);
     const storedOpenings = useEditor((s) => s.doc.openings);
     const storedFurniture = useEditor((s) => s.doc.planFurniture);
+    const storedWires = useEditor((s) => s.doc.planWires);
     const setPoints = useEditor((s) => s.setFloorPlan);
     const addRectangle = useEditor((s) => s.addRectangle);
     const addOpening = useEditor((s) => s.addOpening);
@@ -76,6 +83,7 @@ function FloorPlan() {
     const [rectStart, setRectStart] = useState<Point | null>(null);
     const [rectCurrent, setRectCurrent] = useState<Point | null>(null);
     const [isRectDrawing, setIsRectDrawing] = useState(false);
+    const [wireDrawing, setWireDrawing] = useState<{ start: Point; startConnection?: PlanWire["startConnection"]; end: Point; endConnection?: PlanWire["endConnection"] } | null>(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [hover, setHover] = useState<Point | null>(null);
 
@@ -84,7 +92,7 @@ function FloorPlan() {
     const [selection, setSelection] = useState<PlanItem[]>([]);
     const [hoverTarget, setHoverTarget] = useState<PlanItem | null>(null);
     // `narrowTo`: what to select instead if the press ends without moving.
-    const [drag, setDrag] = useState<{ items: PlanItem[]; start: Point; narrowTo: PlanItem[] | null } | null>(null);
+    const [drag, setDrag] = useState<{ items: PlanItem[]; start: Point; narrowTo: PlanItem[] | null; offset?: Point } | null>(null);
     const [preview, setPreview] = useState<PlanSnapshot | null>(null);
     // Rubber-band selection box in world coords. `base` is what was already
     // selected when it started (Shift+drag adds to it).
@@ -99,18 +107,26 @@ function FloorPlan() {
     const [pendingSymbol, setPendingSymbol] = useState<{ symbolId: string; rotation: number } | null>(null);
     const [placementPoint, setPlacementPoint] = useState<Point | null>(null);
     // Dragging the rotate knob of a selected piece.
-    const [rotating, setRotating] = useState<{ id: string } | null>(null);
+    const [rotating, setRotating] = useState<
+        | { kind: "furniture"; id: string }
+        | { kind: "wire"; id: string; startAngle: number; pointerAngle: number }
+        | null
+    >(null);
 
     const stored: PlanSnapshot = {
         points: storedPoints,
         walls: storedWalls,
         openings: storedOpenings,
         furniture: storedFurniture,
+        wires: storedWires,
     };
     // What's on screen: the drag preview while dragging, otherwise the store.
     const plan = preview ?? stored;
-    const { points, walls, openings, furniture } = plan;
+    const { points, walls, openings, furniture, wires } = plan;
     const activeSelection = selection.filter((item) => itemExists(item, plan));
+    const selectedWireIds = new Set(activeSelection.flatMap((item) =>
+        item.kind === "wire" || item.kind === "wireEnd" ? [item.id] : []
+    ));
 
     const showFloortip = !dismissedTips.includes("floorTip");
     const polylineRectangle = rectangleFromPoints(points);
@@ -129,20 +145,36 @@ function FloorPlan() {
     const liveWall: [Point, Point] | null =
         isDrawing && activeTool === "wall" && points.length > 0 && hover ? [points[points.length - 1], hover] : null;
 
-    // The rotate knob shows for a lone selected piece of furniture.
+    // Rotation knobs are available for one selected furniture item or wire.
     const rotateHandle = (() => {
         if (activeTool !== "select" || activeSelection.length !== 1) return null;
         const only = activeSelection[0];
-        if (only.kind !== "furniture") return null;
-        const piece = furniture.find((f) => f.id === only.id);
-        return piece ? { piece, ...rotateHandlePoints(piece, scale) } : null;
+        if (only.kind === "furniture") {
+            const piece = furniture.find((f) => f.id === only.id);
+            return piece ? { kind: "furniture" as const, piece, ...rotateHandlePoints(piece, scale) } : null;
+        }
+        if (only.kind === "wire") {
+            const wire = wires.find((candidate) => candidate.id === only.id);
+            if (!wire) return null;
+            const base: Point = [(wire.start[0] + wire.end[0]) / 2, (wire.start[1] + wire.end[1]) / 2];
+            const dx = wire.end[0] - wire.start[0];
+            const dy = wire.end[1] - wire.start[1];
+            const length = Math.hypot(dx, dy) || 1;
+            const knob: Point = [base[0] - (dy / length) * (24 / scale), base[1] + (dx / length) * (24 / scale)];
+            return { kind: "wire" as const, wire, base, knob };
+        }
+        return null;
     })();
 
     const snapPoint = ([x, y]: Point): Point => [snap(x, grid.snap), snap(y, grid.snap)];
+    const snapWirePoint = (target: Point, excludeWireIds?: ReadonlySet<string>) => {
+        const snapped = snapWireEndpoint(target, walls, wires, excludeWireIds, CLOSE_DIST / scale);
+        return snapped ?? { point: snapPoint(target) };
+    };
 
     // Save a whole plan snapshot as one undo step.
     const commit = (next: PlanSnapshot) =>
-        setPlan({ floorPlan: next.points, planWalls: next.walls, openings: next.openings, planFurniture: next.furniture });
+        setPlan({ floorPlan: next.points, planWalls: next.walls, openings: next.openings, planFurniture: next.furniture, planWires: next.wires });
 
     // Finish the chain the Wall tool is drawing.
     //
@@ -209,6 +241,7 @@ function FloorPlan() {
             setRectStart(null);
             setRectCurrent(null);
             setIsRectDrawing(false);
+            setWireDrawing(null);
             setSelection([]);
             setMarquee(null);
             setDrag(null);
@@ -257,6 +290,13 @@ function FloorPlan() {
         if (preview) {
             // A corner dropped onto its wall's other end leaves a zero-length wall: drop it.
             commit({ ...preview, walls: preview.walls.filter((w) => pointKey(w.a) !== pointKey(w.b)) });
+            const endpoint = drag?.items.find((item): item is Extract<PlanItem, { kind: "wireEnd" }> => item.kind === "wireEnd");
+            if (endpoint) {
+                setSelection([
+                    endpoint,
+                    ...connectedWireIds(preview.wires, endpoint.id).map((id): PlanItem => ({ kind: "wire", id })),
+                ]);
+            }
         } else if (drag?.narrowTo) {
             setSelection(drag.narrowTo);
         }
@@ -278,14 +318,27 @@ function FloorPlan() {
     // Select tool press: rotate knob, then whatever's under the cursor, else a selection box.
     const pressSelect = (e: SvgPointerEvent) => {
         const world = toWorld(e);
+        const preferredWireId = activeSelection.find(
+            (item): item is Extract<PlanItem, { kind: "wire" | "wireEnd" }> => item.kind === "wire" || item.kind === "wireEnd"
+        );
 
         if (rotateHandle && distance(world, rotateHandle.knob) <= (HIT_PX + 2) / scale) {
             e.currentTarget.setPointerCapture(e.pointerId);
-            setRotating({ id: rotateHandle.piece.id });
+            if (rotateHandle.kind === "furniture") {
+                setRotating({ kind: "furniture", id: rotateHandle.piece.id });
+            } else {
+                const pointerAngle = Math.atan2(world[1] - rotateHandle.base[1], world[0] - rotateHandle.base[0]);
+                setRotating({
+                    kind: "wire",
+                    id: rotateHandle.wire.id,
+                    startAngle: Math.atan2(rotateHandle.wire.end[1] - rotateHandle.wire.start[1], rotateHandle.wire.end[0] - rotateHandle.wire.start[0]),
+                    pointerAngle,
+                });
+            }
             return;
         }
 
-        const hits = hitTest(world, plan, rooms, scale);
+        const hits = hitTest(world, plan, rooms, scale, preferredWireId?.id);
         e.currentTarget.setPointerCapture(e.pointerId);
 
         if (hits.length === 0) {
@@ -296,27 +349,51 @@ function FloorPlan() {
             return;
         }
 
+        const firstHit = hits[0];
+        if (firstHit.kind === "wireEnd") {
+            const wire = wires.find((candidate) => candidate.id === firstHit.id);
+            if (wire) {
+                const cableSelection: PlanItem[] = [
+                    firstHit,
+                    ...connectedWireIds(wires, firstHit.id).map((id): PlanItem => ({ kind: "wire", id })),
+                ];
+                setSelection(cableSelection);
+                const endpoint = wire[firstHit.end];
+                setDrag({
+                    items: [firstHit],
+                    start: world,
+                    offset: [endpoint[0] - world[0], endpoint[1] - world[1]],
+                    narrowTo: null,
+                });
+            }
+            return;
+        }
+
+        const selectionHits = firstHit.kind === "wire"
+            ? connectedWireIds(wires, firstHit.id).map((id): PlanItem => ({ kind: "wire", id }))
+            : hits;
+
         const selectedKeys = new Set(activeSelection.map(itemKey));
-        const hitsSelected = hits.every((item) => selectedKeys.has(itemKey(item)));
+        const hitsSelected = selectionHits.every((item) => selectedKeys.has(itemKey(item)));
         let next: PlanItem[];
 
         if (e.shiftKey) {
             // Shift+click toggles the item in or out of the selection.
-            const hitKeys = new Set(hits.map(itemKey));
+            const hitKeys = new Set(selectionHits.map(itemKey));
             next = hitsSelected
                 ? activeSelection.filter((item) => !hitKeys.has(itemKey(item)))
-                : [...activeSelection, ...hits];
+                : [...activeSelection, ...selectionHits];
         } else {
             // Grabbing something already selected drags the whole selection.
-            next = hitsSelected ? activeSelection : hits;
+            next = hitsSelected ? activeSelection : selectionHits;
         }
 
         setSelection(next);
         if (next.length > 0 && !(e.shiftKey && hitsSelected)) {
             // A plain click (no drag) on one item inside a bigger
             // selection narrows the selection to that item.
-            const narrowTo = !e.shiftKey && hitsSelected && activeSelection.length > hits.length ? hits : null;
-            setDrag({ items: next, start: snapPoint(world), narrowTo });
+            const narrowTo = !e.shiftKey && hitsSelected && activeSelection.length > selectionHits.length ? selectionHits : null;
+            setDrag({ items: firstHit.kind === "wire" ? selectionHits : next, start: snapPoint(world), narrowTo });
         }
     };
 
@@ -372,6 +449,13 @@ function FloorPlan() {
             return;
         }
 
+        if (activeTool === "wire") {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const start = snapWirePoint(toWorld(e));
+            setWireDrawing({ start: start.point, startConnection: start.connection, end: start.point, endConnection: start.connection });
+            return;
+        }
+
         if (activeTool !== "rectangle") return;
 
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -395,13 +479,31 @@ function FloorPlan() {
         }
 
         if (rotating) {
-            const piece = storedFurniture.find((f) => f.id === rotating.id);
-            if (piece) {
+            if (rotating.kind === "furniture") {
+                const piece = storedFurniture.find((f) => f.id === rotating.id);
+                if (!piece) return;
                 // Point the knob at the cursor: snaps to 15° steps, Shift for free rotation.
                 const raw = (Math.atan2(world[1] - piece.y, world[0] - piece.x) * 180) / Math.PI + 90;
                 const rotation = normalizeAngle(e.shiftKey ? Math.round(raw) : Math.round(raw / 15) * 15);
                 setPreview({ ...stored, furniture: storedFurniture.map((f) => (f.id === piece.id ? { ...f, rotation } : f)) });
+            } else {
+                const wire = stored.wires.find((candidate) => candidate.id === rotating.id);
+                if (!wire) return;
+                const midpoint: Point = [(wire.start[0] + wire.end[0]) / 2, (wire.start[1] + wire.end[1]) / 2];
+                const pointerAngle = Math.atan2(world[1] - midpoint[1], world[0] - midpoint[0]);
+                const angle = rotating.startAngle + pointerAngle - rotating.pointerAngle;
+                const halfLength = Math.hypot(wire.end[0] - wire.start[0], wire.end[1] - wire.start[1]) / 2;
+                const start: Point = [midpoint[0] - Math.cos(angle) * halfLength, midpoint[1] - Math.sin(angle) * halfLength];
+                const end: Point = [midpoint[0] + Math.cos(angle) * halfLength, midpoint[1] + Math.sin(angle) * halfLength];
+                const movedStart = moveWireEndpoint(stored, wire.id, "start", start);
+                setPreview(moveWireEndpoint(movedStart, wire.id, "end", end));
             }
+            return;
+        }
+
+        if (wireDrawing) {
+            const endpoint = snapWirePoint(world);
+            setWireDrawing({ ...wireDrawing, end: endpoint.point, endConnection: endpoint.connection });
             return;
         }
 
@@ -413,13 +515,30 @@ function FloorPlan() {
                 setMarquee({ ...marquee, current: world });
                 setSelection([...marquee.base, ...boxItems.filter((item) => !baseKeys.has(itemKey(item)))]);
             } else if (drag) {
+                const endpointDrag = drag.items[0]?.kind === "wireEnd" ? drag.items[0] : null;
+                if (endpointDrag) {
+                    const requested: Point = [world[0] + (drag.offset?.[0] ?? 0), world[1] + (drag.offset?.[1] ?? 0)];
+                    const junction = connectedJunctionEndpoints(stored.wires, { wireId: endpointDrag.id, end: endpointDrag.end });
+                    const excludedWireIds = e.altKey
+                        ? new Set([endpointDrag.id])
+                        : new Set(junction.map((endpoint) => endpoint.wireId));
+                    const snapped = snapWirePoint(requested, excludedWireIds);
+                    const point = snapped.connection ? snapped.point : snapPoint(requested);
+                    setPreview(e.altKey
+                        ? moveWireEndpoint(stored, endpointDrag.id, endpointDrag.end, point, snapped.connection)
+                        : moveWireJunction(stored, { wireId: endpointDrag.id, end: endpointDrag.end }, point, snapped.connection));
+                    return;
+                }
                 // Only preview once the cursor reaches another snap
                 // cell, so a plain click never nudges anything.
                 const dx = current[0] - drag.start[0];
                 const dy = current[1] - drag.start[1];
                 setPreview(dx || dy ? moveSelection(drag.items, stored, dx, dy) : null);
             } else {
-                setHoverTarget(hitTest(world, plan, rooms, scale)[0] ?? null);
+                const preferredWireId = activeSelection.find(
+                    (item): item is Extract<PlanItem, { kind: "wire" | "wireEnd" }> => item.kind === "wire" || item.kind === "wireEnd"
+                );
+                setHoverTarget(hitTest(world, plan, rooms, scale, preferredWireId?.id)[0] ?? null);
             }
             return;
         }
@@ -442,9 +561,30 @@ function FloorPlan() {
             return;
         }
 
+        if (wireDrawing) {
+            if (distance(wireDrawing.start, wireDrawing.end) > 1) {
+                const newWire: PlanWire = {
+                    id: crypto.randomUUID(),
+                    start: wireDrawing.start,
+                    end: wireDrawing.end,
+                    startConnection: wireDrawing.startConnection,
+                    endConnection: wireDrawing.endConnection,
+                    color: "#333333",
+                };
+                setPlan({ planWires: [...storedWires, newWire] });
+                setSelection([{ kind: "wire", id: newWire.id }]);
+            }
+            setWireDrawing(null);
+            releaseCapture(e);
+            return;
+        }
+
         if (rotating) {
             // The whole turn is one undo step.
-            if (preview) setPlan({ planFurniture: preview.furniture });
+            if (preview) {
+                if (rotating.kind === "furniture") setPlan({ planFurniture: preview.furniture });
+                else setPlan({ planWires: preview.wires });
+            }
             setRotating(null);
             setPreview(null);
             releaseCapture(e);
@@ -487,6 +627,7 @@ function FloorPlan() {
         setRectStart(null);
         setRectCurrent(null);
         setIsRectDrawing(false);
+        setWireDrawing(null);
         setDrag(null);
         setPreview(null);
         setMarquee(null);
@@ -503,7 +644,7 @@ function FloorPlan() {
 
     const cursor = pendingSymbol
         ? "crosshair"
-        : rotating || isPanning
+        : rotating || isPanning || wireDrawing
             ? "grabbing"
             : activeTool === "pan" || spaceHeld
                 ? "grab"
@@ -645,6 +786,12 @@ function FloorPlan() {
                         <FurnitureLayer
                             furniture={furniture}
                             pending={pendingSymbol && placementPoint ? { ...pendingSymbol, at: placementPoint } : null}
+                        />
+
+                        <WireLayer
+                            wires={wires}
+                            selectedWireIds={selectedWireIds}
+                            preview={wireDrawing ? { start: wireDrawing.start, end: wireDrawing.end } : null}
                         />
 
                         {/* RECTANGLE IN PROGRESS */}

@@ -47,8 +47,19 @@ export interface PlanWall {
 }
 
 const rectangleWalls = (r: Rectangle, roomId: string): PlanWall[] => {
-    const corners: [number, number][] = [[r.x1, r.y1], [r.x2, r.y1], [r.x2, r.y2], [r.x1, r.y2]];
-    return corners.map((a, i) => ({ id: crypto.randomUUID(), a, b: corners[(i + 1) % 4], roomId }));
+    const corners: [number, number][] = [
+        [r.x1, r.y1],
+        [r.x2, r.y1],
+        [r.x2, r.y2],
+        [r.x1, r.y2],
+    ];
+
+    return corners.map((a, i) => ({
+        id: crypto.randomUUID(),
+        a,
+        b: corners[(i + 1) % 4],
+        roomId,
+    }));
 };
 
 // A door or window. It isn't a free object: it lives ON a wall, described by
@@ -68,20 +79,45 @@ export interface Opening {
 // What a 3D wall needs to know about an opening (it's already attached to the wall).
 export type WallOpening = Omit<Opening, "id" | "wallId">;
 
-export const OPENING_DEFAULTS: Record<Opening["kind"], Pick<Opening, "width" | "height" | "sill">> = {
+export const OPENING_DEFAULTS: Record<
+    Opening["kind"],
+    Pick<Opening, "width" | "height" | "sill">
+> = {
     door: { width: 0.9, height: 2.1, sill: 0 },
     window: { width: 1.2, height: 1.2, sill: 0.9 },
 };
 
 // Keep every opening on a wall that still exists and fully inside it. An
 // opening whose wall was deleted, or became too short for it, is dropped.
-export function fitOpenings(openings: Opening[], walls: PlanWall[]): Opening[] {
-    const lengths = new Map(walls.map((w) => [w.id, Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) / PX_PER_METER]));
+export function fitOpenings(
+    openings: Opening[],
+    walls: PlanWall[]
+): Opening[] {
+    const lengths = new Map(
+        walls.map((w) => [
+            w.id,
+            Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) /
+                PX_PER_METER,
+        ])
+    );
+
     return openings.flatMap((o) => {
         const length = lengths.get(o.wallId);
-        if (length === undefined || length < o.width) return [];
-        const offset = Math.min(Math.max(o.offset, o.width / 2), length - o.width / 2);
-        return [offset === o.offset ? o : { ...o, offset }];
+
+        if (length === undefined || length < o.width) {
+            return [];
+        }
+
+        const offset = Math.min(
+            Math.max(o.offset, o.width / 2),
+            length - o.width / 2
+        );
+
+        return [
+            offset === o.offset
+                ? o
+                : { ...o, offset },
+        ];
     });
 }
 
@@ -98,14 +134,94 @@ export interface PlanFurniture {
     depth: number;
 }
 
+export type PlanWireConnection =
+    | { kind: "wall"; wallId: string; end: "a" | "b" }
+    | { kind: "wire"; wireId: string; end: "start" | "end" };
+
+// One cable segment in plan pixels. Endpoint links are explicit graph edges;
+// coordinates remain stored too so the segment renders independently.
+export interface PlanWire {
+    id: string;
+    start: [number, number];
+    end: [number, number];
+    startConnection?: PlanWireConnection;
+    endConnection?: PlanWireConnection;
+    color: string;
+}
+
+const samePlanPoint = (a: [number, number], b: [number, number]) =>
+    a[0] === b[0] && a[1] === b[1];
+
+function fitWireConnections(wires: PlanWire[], walls: PlanWall[]): PlanWire[] {
+    const byId = new Map(wires.map((wire) => [wire.id, wire]));
+    const wallById = new Map(walls.map((wall) => [wall.id, wall]));
+
+    return wires.map((wire) => {
+        const fit = (point: [number, number], connection?: PlanWireConnection) => {
+            if (!connection) return undefined;
+            const target = connection.kind === "wall"
+                ? wallById.get(connection.wallId)?.[connection.end]
+                : byId.get(connection.wireId)?.[connection.end];
+            return target && samePlanPoint(point, target) ? connection : undefined;
+        };
+        return {
+            ...wire,
+            startConnection: fit(wire.start, wire.startConnection),
+            endConnection: fit(wire.end, wire.endConnection),
+        };
+    });
+}
+
 // Two floor points count as the "same corner" if their x and z are within 1cm.
 const samePoint = (a: Vec3, b: Vec3) =>
-    Math.abs(a[0] - b[0]) < 0.01 && Math.abs(a[2] - b[2]) < 0.01;
+    Math.abs(a[0] - b[0]) < 0.01 &&
+    Math.abs(a[2] - b[2]) < 0.01;
 
 interface Transform {
     position: Vec3;
     rotation: Quat;
     scale: Vec3;
+}
+
+function transformPoint(point: Vec3, transform: Transform, toLocal = false): Vec3 {
+    const [qx, qy, qz, qw] = transform.rotation;
+    let [x, y, z] = point;
+
+    if (toLocal) {
+        x -= transform.position[0];
+        y -= transform.position[1];
+        z -= transform.position[2];
+        [x, y, z] = rotateVector([x, y, z], [-qx, -qy, -qz, qw]);
+        return [
+            x / (transform.scale[0] || 1),
+            y / (transform.scale[1] || 1),
+            z / (transform.scale[2] || 1),
+        ];
+    }
+
+    x *= transform.scale[0];
+    y *= transform.scale[1];
+    z *= transform.scale[2];
+    [x, y, z] = rotateVector([x, y, z], transform.rotation);
+    return [
+        x + transform.position[0],
+        y + transform.position[1],
+        z + transform.position[2],
+    ];
+}
+
+function rotateVector(vector: Vec3, rotation: Quat): Vec3 {
+    const [x, y, z] = vector;
+    const [qx, qy, qz, qw] = rotation;
+    const tx = 2 * (qy * z - qz * y);
+    const ty = 2 * (qz * x - qx * z);
+    const tz = 2 * (qx * y - qy * x);
+
+    return [
+        x + qw * tx + qy * tz - qz * ty,
+        y + qw * ty + qz * tx - qx * tz,
+        z + qw * tz + qx * ty - qy * tx,
+    ];
 }
 
 interface BaseNode {
@@ -136,6 +252,7 @@ interface FurnitureNode extends BaseNode {
     // replace it without touching pieces placed by hand in 3D.
     fromPlan?: boolean;
 }
+
 interface PlaceHolderNode extends BaseNode {
     type: "placeholder";
     width: number;
@@ -145,7 +262,6 @@ interface PlaceHolderNode extends BaseNode {
     // As on FurnitureNode: this box came from a 2D plan symbol.
     fromPlan?: boolean;
 }
-
 
 interface WallNode extends BaseNode {
     type: "wall";
@@ -171,7 +287,27 @@ interface LightNode extends BaseNode {
     temperature?: number;
 }
 
-export type SceneNode = FurnitureNode | WallNode | LightNode | FloorNode|PlaceHolderNode;
+interface WireNode extends BaseNode {
+    type: "wire";
+
+    // Start and end positions of one straight cable segment.
+    start: Vec3;
+    end: Vec3;
+
+    // Physical thickness of the cable in metres.
+    radius: number;
+
+    // Display colour.
+    color: string;
+}
+
+export type SceneNode =
+    | FurnitureNode
+    | WallNode
+    | LightNode
+    | FloorNode
+    | PlaceHolderNode
+    | WireNode;
 
 interface SceneDocument {
     id: string;
@@ -188,9 +324,16 @@ interface SceneDocument {
     // 2D furniture symbols placed on the plan.
     planFurniture: PlanFurniture[];
 
+    // 2D cable segments and their explicit endpoint connections.
+    planWires: PlanWire[];
+
     version: number;
 
-    room: { width: number; length: number; height: number };
+    room: {
+        width: number;
+        length: number;
+        height: number;
+    };
 
     nodes: Record<string, SceneNode>;
 
@@ -200,12 +343,27 @@ interface SceneDocument {
 
 // Saves made before a field existed won't have it; fill the gaps so the UI
 // can rely on every field being present.
-export function normalizeDoc(raw: SceneDocument & { rectangles?: Rectangle[] }): SceneDocument {
+export function normalizeDoc(
+    raw: SceneDocument & { rectangles?: Rectangle[] }
+): SceneDocument {
     const { rectangles, ...rest } = raw;
+
     // Older saves stored whole rectangles (split each into four walls), and
     // walls without ids (give them one so openings can refer to them).
-    const planWalls = (raw.planWalls ?? (rectangles ?? []).flatMap((r) => rectangleWalls(r, crypto.randomUUID())))
-        .map((w) => (w.id ? w : { ...w, id: crypto.randomUUID() }));
+    const planWalls = (
+        raw.planWalls ??
+        (rectangles ?? []).flatMap((r) =>
+            rectangleWalls(r, crypto.randomUUID())
+        )
+    ).map((w) =>
+        w.id
+            ? w
+            : {
+                  ...w,
+                  id: crypto.randomUUID(),
+              }
+    );
+
     return {
         ...rest,
         nodes: raw.nodes ?? {},
@@ -213,11 +371,17 @@ export function normalizeDoc(raw: SceneDocument & { rectangles?: Rectangle[] }):
         planWalls,
         openings: fitOpenings(raw.openings ?? [], planWalls),
         planFurniture: raw.planFurniture ?? [],
+        planWires: fitWireConnections(raw.planWires ?? [], planWalls),
     };
 }
 
 // Any subset of the 2D plan, replaced together in one undoable commit.
-type PlanChanges = Partial<Pick<SceneDocument, "floorPlan" | "planWalls" | "openings" | "planFurniture">>;
+type PlanChanges = Partial<
+    Pick<
+        SceneDocument,
+        "floorPlan" | "planWalls" | "openings" | "planFurniture" | "planWires"
+    >
+>;
 
 interface EditorState {
     doc: SceneDocument;
@@ -233,6 +397,7 @@ interface EditorState {
     updateTransform: (id: string, t: Partial<Transform>) => void;
     updateNode: (id: string, t: Partial<SceneNode>) => void;
     moveCorner: (from: Vec3, to: Vec3) => void;
+    moveWireCorner: (from: Vec3, to: Vec3) => void;
     removeNode: (id: string) => void;
     select: (ids: string[]) => void;
 
@@ -267,14 +432,32 @@ interface EditorState {
 export const useEditor = create<EditorState>((set, get) => {
     const commit = (recipe: (d: SceneDocument) => void) => {
         const before = Object.keys(get().doc.nodes).length;
-        const [next, patches, inverse] = produceWithPatches(get().doc, recipe);
+
+        const [next, patches, inverse] = produceWithPatches(
+            get().doc,
+            recipe
+        );
+
         const after = Object.keys(next.nodes).length;
 
-        console.log("[store.commit] nodes", before, "->", after, "| patches:", patches.length);
+        console.log(
+            "[store.commit] nodes",
+            before,
+            "->",
+            after,
+            "| patches:",
+            patches.length
+        );
 
         set((s) => ({
             doc: next,
-            undoStack: [...s.undoStack, { patches, inverse }],
+            undoStack: [
+                ...s.undoStack,
+                {
+                    patches,
+                    inverse,
+                },
+            ],
             redoStack: [],
         }));
     };
@@ -283,12 +466,17 @@ export const useEditor = create<EditorState>((set, get) => {
         doc: {
             id: crypto.randomUUID(),
             version: 1,
-            room: { width: 5, length: 4, height: 2.7 },
+            room: {
+                width: 5,
+                length: 4,
+                height: 2.7,
+            },
             nodes: {},
             floorPlan: [],
             planWalls: [],
             openings: [],
             planFurniture: [],
+            planWires: [],
         },
 
         dismissedTips: [],
@@ -305,18 +493,23 @@ export const useEditor = create<EditorState>((set, get) => {
         setCameraMode: (m) => set({ cameraMode: m }),
 
         units: loadUnits(),
+
         setUnits: (u) => {
             try {
                 localStorage.setItem("units", u);
             } catch {
                 // preference just won't persist
             }
+
             set({ units: u });
         },
 
         saveProject: async (name: string) => {
             const { doc, currentProjectId } = get();
-            const { data: { user } } = await supabase.auth.getUser();
+
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
 
             if (!user) {
                 throw new Error("You must be logged in to save projects");
@@ -325,22 +518,35 @@ export const useEditor = create<EditorState>((set, get) => {
             if (currentProjectId) {
                 const { error } = await supabase
                     .from("projects")
-                    .update({ name, data: doc, updated_at: new Date().toISOString() })
+                    .update({
+                        name,
+                        data: doc,
+                        updated_at: new Date().toISOString(),
+                    })
                     .eq("id", currentProjectId);
 
                 if (error) throw error;
 
-                set({ currentProjectName: name });
+                set({
+                    currentProjectName: name,
+                });
             } else {
                 const { data, error } = await supabase
                     .from("projects")
-                    .insert({ user_id: user.id, name, data: doc })
+                    .insert({
+                        user_id: user.id,
+                        name,
+                        data: doc,
+                    })
                     .select()
                     .single();
 
                 if (error) throw error;
 
-                set({ currentProjectId: data.id, currentProjectName: name });
+                set({
+                    currentProjectId: data.id,
+                    currentProjectName: name,
+                });
             }
         },
 
@@ -365,15 +571,27 @@ export const useEditor = create<EditorState>((set, get) => {
             });
         },
 
-        setProjectName: (name: string) => set({ currentProjectName: name }),
+        setProjectName: (name: string) =>
+            set({
+                currentProjectName: name,
+            }),
 
-        setMode: (m) => set({ mode: m }),
+        setMode: (m) =>
+            set({
+                mode: m,
+            }),
 
         dismissTip: (id: string) =>
-            set((s) => ({ dismissedTips: [...s.dismissedTips, id] })),
+            set((s) => ({
+                dismissedTips: [
+                    ...s.dismissedTips,
+                    id,
+                ],
+            })),
 
         addNode: (n) => {
             console.log("[store.addNode]", n.type, n.id);
+
             commit((d) => {
                 d.nodes[n.id] = n;
             });
@@ -387,7 +605,12 @@ export const useEditor = create<EditorState>((set, get) => {
         // A rectangle room is stored as four separate walls sharing a roomId.
         addRectangle: (rectangle: Rectangle) =>
             commit((d) => {
-                d.planWalls.push(...rectangleWalls(rectangle, crypto.randomUUID()));
+                d.planWalls.push(
+                    ...rectangleWalls(
+                        rectangle,
+                        crypto.randomUUID()
+                    )
+                );
             }),
 
         // Replace any parts of the 2D plan together in ONE commit, so a
@@ -395,11 +618,32 @@ export const useEditor = create<EditorState>((set, get) => {
         // Moving or deleting walls can strand openings, so they're refit here too.
         setPlan: (changes: PlanChanges) => {
             const { doc } = get();
-            const nextOpenings = fitOpenings(changes.openings ?? doc.openings, changes.planWalls ?? doc.planWalls);
+
+            const nextOpenings = fitOpenings(
+                changes.openings ?? doc.openings,
+                changes.planWalls ?? doc.planWalls
+            );
+
             commit((d) => {
-                if (changes.floorPlan) d.floorPlan = changes.floorPlan;
-                if (changes.planWalls) d.planWalls = changes.planWalls;
-                if (changes.planFurniture) d.planFurniture = changes.planFurniture;
+                if (changes.floorPlan) {
+                    d.floorPlan = changes.floorPlan;
+                }
+
+                if (changes.planWalls) {
+                    d.planWalls = changes.planWalls;
+                }
+
+                if (changes.planFurniture) {
+                    d.planFurniture = changes.planFurniture;
+                }
+
+                if (changes.planWires || changes.planWalls) {
+                    d.planWires = fitWireConnections(
+                        changes.planWires ?? d.planWires,
+                        changes.planWalls ?? d.planWalls
+                    );
+                }
+
                 d.openings = nextOpenings;
             });
         },
@@ -414,15 +658,32 @@ export const useEditor = create<EditorState>((set, get) => {
                 d.planFurniture.push(item);
             }),
 
-
         buildRoomFromPlan: () => {
             const scale = PX_PER_METER;
-            const { floorPlan, planWalls, openings, planFurniture, nodes, builtPlanKey } = get().doc;
 
-            const planKey = JSON.stringify({ floorPlan, planWalls, openings, planFurniture });
+            const {
+                floorPlan,
+                planWalls,
+                openings,
+                planFurniture,
+                nodes,
+                builtPlanKey,
+            } = get().doc;
+
+            const planKey = JSON.stringify({
+                floorPlan,
+                planWalls,
+                openings,
+                planFurniture,
+            });
+
             const hasPlanNodes = Object.values(nodes).some(
                 (n) =>
-                    (n.type === "wall" || n.type === "furniture" || n.type === "placeholder") &&
+                    (
+                        n.type === "wall" ||
+                        n.type === "furniture" ||
+                        n.type === "placeholder"
+                    ) &&
                     n.fromPlan
             );
 
@@ -443,15 +704,20 @@ export const useEditor = create<EditorState>((set, get) => {
                 return;
             }
 
-            const makeWall = (start: Vec3, end: Vec3): WallNode => ({
+            const makeWall = (
+                start: Vec3,
+                end: Vec3
+            ): WallNode => ({
                 id: crypto.randomUUID(),
                 name: "Wall",
                 parentId: null,
+
                 transform: {
                     position: [0, 0, 0],
                     rotation: [0, 0, 0, 1],
                     scale: [1, 1, 1],
                 },
+
                 type: "wall",
                 start,
                 end,
@@ -466,22 +732,44 @@ export const useEditor = create<EditorState>((set, get) => {
                 //    made. Hand-placed nodes carry no fromPlan flag and survive.
                 for (const id in d.nodes) {
                     const n = d.nodes[id];
+
                     const built =
-                        (n.type === "wall" || n.type === "furniture" || n.type === "placeholder") &&
+                        (
+                            n.type === "wall" ||
+                            n.type === "furniture" ||
+                            n.type === "placeholder"
+                        ) &&
                         n.fromPlan;
-                    if (built) delete d.nodes[id];
+
+                    if (built) {
+                        delete d.nodes[id];
+                    }
                 }
+
                 d.builtPlanKey = planKey;
 
                 // 1. Build walls from freehand floor plan.
                 if (floorPlan.length >= 3) {
-                    for (let i = 0; i < floorPlan.length; i++) {
+                    for (
+                        let i = 0;
+                        i < floorPlan.length;
+                        i++
+                    ) {
                         const a = floorPlan[i];
-                        const b = floorPlan[(i + 1) % floorPlan.length];
+                        const b =
+                            floorPlan[(i + 1) % floorPlan.length];
 
                         const wall = makeWall(
-                            [a[0] / scale, 0, a[1] / scale],
-                            [b[0] / scale, 0, b[1] / scale]
+                            [
+                                a[0] / scale,
+                                0,
+                                a[1] / scale,
+                            ],
+                            [
+                                b[0] / scale,
+                                0,
+                                b[1] / scale,
+                            ]
                         );
 
                         d.nodes[wall.id] = wall;
@@ -493,15 +781,42 @@ export const useEditor = create<EditorState>((set, get) => {
                 //    each opening's offset still measures from the start.
                 for (const w of planWalls) {
                     const wall = makeWall(
-                        [w.a[0] / scale, 0, w.a[1] / scale],
-                        [w.b[0] / scale, 0, w.b[1] / scale]
+                        [
+                            w.a[0] / scale,
+                            0,
+                            w.a[1] / scale,
+                        ],
+                        [
+                            w.b[0] / scale,
+                            0,
+                            w.b[1] / scale,
+                        ]
                     );
-                    const wallOpenings = openings.filter((o) => o.wallId === w.id);
+
+                    const wallOpenings = openings.filter(
+                        (o) => o.wallId === w.id
+                    );
+
                     if (wallOpenings.length > 0) {
-                        wall.openings = wallOpenings.map(({ kind, offset, width, height, sill, flip }) => ({
-                            kind, offset, width, height, sill, flip,
-                        }));
+                        wall.openings = wallOpenings.map(
+                            ({
+                                kind,
+                                offset,
+                                width,
+                                height,
+                                sill,
+                                flip,
+                            }) => ({
+                                kind,
+                                offset,
+                                width,
+                                height,
+                                sill,
+                                flip,
+                            })
+                        );
                     }
+
                     d.nodes[wall.id] = wall;
                 }
 
@@ -533,23 +848,69 @@ export const useEditor = create<EditorState>((set, get) => {
             commit((d) => {
                 for (const id in d.nodes) {
                     const n = d.nodes[id];
-                    if (n.type !== "wall") continue;
 
-                    if (samePoint(n.start, from)) n.start = to;
-                    if (samePoint(n.end, from)) n.end = to;
+                    if (n.type !== "wall") {
+                        continue;
+                    }
+
+                    if (samePoint(n.start, from)) {
+                        n.start = to;
+                    }
+
+                    if (samePoint(n.end, from)) {
+                        n.end = to;
+                    }
                 }
             }),
 
-        select: (ids) => set({ selectedIds: ids }),
+        moveWireCorner: (from, to) =>
+            commit((d) => {
+                for (const node of Object.values(d.nodes)) {
+                    if (node.type !== "wire") continue;
+
+                    const worldStart = transformPoint(node.start, node.transform);
+                    const worldEnd = transformPoint(node.end, node.transform);
+
+                    if (samePoint(worldStart, from)) {
+                        node.start = transformPoint(
+                            [to[0], worldStart[1], to[2]],
+                            node.transform,
+                            true
+                        );
+                    }
+
+                    if (samePoint(worldEnd, from)) {
+                        node.end = transformPoint(
+                            [to[0], worldEnd[1], to[2]],
+                            node.transform,
+                            true
+                        );
+                    }
+                }
+            }),
+
+        select: (ids) =>
+            set({
+                selectedIds: ids,
+            }),
 
         redo: () =>
             set((s) => {
                 const next = s.redoStack.at(-1);
-                if (!next) return s;
+
+                if (!next) {
+                    return s;
+                }
 
                 return {
-                    doc: applyPatches(s.doc, next.patches),
-                    undoStack: [...s.undoStack, next],
+                    doc: applyPatches(
+                        s.doc,
+                        next.patches
+                    ),
+                    undoStack: [
+                        ...s.undoStack,
+                        next,
+                    ],
                     redoStack: s.redoStack.slice(0, -1),
                 };
             }),
@@ -557,12 +918,21 @@ export const useEditor = create<EditorState>((set, get) => {
         undo: () =>
             set((s) => {
                 const last = s.undoStack.at(-1);
-                if (!last) return s;
+
+                if (!last) {
+                    return s;
+                }
 
                 return {
-                    doc: applyPatches(s.doc, last.inverse),
+                    doc: applyPatches(
+                        s.doc,
+                        last.inverse
+                    ),
                     undoStack: s.undoStack.slice(0, -1),
-                    redoStack: [...s.redoStack, last],
+                    redoStack: [
+                        ...s.redoStack,
+                        last,
+                    ],
                 };
             }),
     };

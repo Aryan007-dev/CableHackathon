@@ -7,6 +7,7 @@ export type Tool =
     | "door"
     | "window"
     | "measure"
+    | "wire"
     | "furniture";
 
 type ToolSideBarProps = {
@@ -43,6 +44,13 @@ const sections = [
     },
     {
         number: 4,
+        title: "CABLES",
+        tools: [
+            { id: "wire", label: "Wire segment", shortcut: "C" },
+        ],
+    },
+    {
+        number: 5,
         title: "MEASURE & LABEL",
         tools: [
             { id: "measure", label: "Measure", shortcut: "M" },

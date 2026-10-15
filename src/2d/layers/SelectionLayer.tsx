@@ -29,7 +29,7 @@ export default function SelectionLayer({
     rotateHandle,
     marquee,
 }: SelectionLayerProps) {
-    const { points, walls, openings, furniture } = plan;
+    const { points, walls, openings, furniture, wires } = plan;
     const handleSize = 10 / scale;
 
     const corner = ([x, y]: Point, key: string, strong: boolean) =>
@@ -83,6 +83,42 @@ export default function SelectionLayer({
         if (item.kind === "point") return corner(points[item.index], key, strong);
         if (item.kind === "segment") return wallLine([points[item.index - 1], points[item.index]], key, strong);
         if (item.kind === "wall") return wallLine([walls[item.index].a, walls[item.index].b], key, strong);
+
+        if (item.kind === "wire" || item.kind === "wireEnd") {
+            const wire = wires.find((candidate) => candidate.id === item.id);
+            if (!wire) return null;
+            const endpoint = (point: Point, endpointKey: string, active: boolean) => (
+                <circle
+                    key={endpointKey}
+                    cx={point[0]}
+                    cy={point[1]}
+                    r={(active ? 5 : 4) / scale}
+                    fill={active ? "var(--color-selection)" : "var(--color-surface)"}
+                    stroke={HIGHLIGHT}
+                    strokeWidth={active ? 2 : 1.5}
+                    vectorEffect="non-scaling-stroke"
+                />
+            );
+            return (
+                <g key={key}>
+                    {!strong && (
+                        <line
+                            x1={wire.start[0]}
+                            y1={wire.start[1]}
+                            x2={wire.end[0]}
+                            y2={wire.end[1]}
+                            stroke={HIGHLIGHT}
+                            strokeOpacity={0.45}
+                            strokeWidth={7}
+                            strokeLinecap="round"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    )}
+                    {strong && endpoint(wire.start, "start", item.kind === "wireEnd" && item.end === "start")}
+                    {strong && endpoint(wire.end, "end", item.kind === "wireEnd" && item.end === "end")}
+                </g>
+            );
+        }
 
         if (item.kind === "furniture") {
             const piece = furniture.find((f) => f.id === item.id);

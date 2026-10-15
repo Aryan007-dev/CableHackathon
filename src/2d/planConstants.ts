@@ -37,6 +37,7 @@ export const TOOL_SHORTCUTS: Record<string, Tool> = {
     g: "polygon",
     d: "door",
     n: "window",
+    c: "wire",
     m: "measure",
     l: "furniture",
 };
