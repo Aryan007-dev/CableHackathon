@@ -15,11 +15,12 @@ type View = "2d" | "3d";
 type ToolbarProps = {
   view: View;
   onViewChange: (view: View) => void;
+  onHome: () => void;
 };
 
 const ICON = { size: 18, strokeWidth: 1.75 } as const;
 
-function Toolbar({ view, onViewChange }: ToolbarProps) {
+function Toolbar({ view, onViewChange, onHome }: ToolbarProps) {
   const { user } = useAuth();
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
@@ -78,7 +79,7 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
     <header className={styles.bar}>
       {/* LEFT: brand + plan title */}
       <div className={styles.left}>
-        <span className={styles.logo}>GridMind </span>
+        <button type="button" className={styles.logo} onClick={onHome} title="GridMind home">GridMind</button>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
           <span className={styles.titleNote}>

@@ -9,9 +9,17 @@ import Scene from "./Scene";
 import Inspector from "./Inspector";
 import ChatPanel from "./ChatPanel";
 import CablePanel from "./cable/CablePanel";
+import LandingPage from "./LandingPage";
 
 const App = () => {
   const [view, setView] = useState<"2d" | "3d">("2d");
+  const [page, setPage] = useState<"home" | "editor">(() => window.location.pathname === "/editor" ? "editor" : "home");
+
+  useEffect(() => {
+    const onPopState = () => setPage(window.location.pathname === "/editor" ? "editor" : "home");
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
  
 
   // Undo / redo from the keyboard, in both views: Cmd/Ctrl+Z, and
@@ -32,8 +40,6 @@ const App = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  console.log("[App] render. view =", view);
-
   const changeView = (next: "2d" | "3d") => {
     // Entering 3D builds the walls from the 2D plan first.
     if (next === "3d" && view === "2d") {
@@ -42,9 +48,22 @@ const App = () => {
     setView(next);
   };
 
+  const openEditor = () => {
+    setView("2d");
+    window.history.pushState({}, "", "/editor");
+    setPage("editor");
+  };
+
+  const openHome = () => {
+    window.history.pushState({}, "", "/");
+    setPage("home");
+  };
+
+  if (page === "home") return <LandingPage onOpenEditor={openEditor} />;
+
   return (
     <div className="editor-app">
-      <Toolbar view={view} onViewChange={changeView} />
+      <Toolbar view={view} onViewChange={changeView} onHome={openHome} />
 
       <main className="editor-workspace">
         
