@@ -54,16 +54,11 @@ const App = () => {
     setPage("editor");
   };
 
-  const openHome = () => {
-    window.history.pushState({}, "", "/");
-    setPage("home");
-  };
-
   if (page === "home") return <LandingPage onOpenEditor={openEditor} />;
 
   return (
     <div className="editor-app">
-      <Toolbar view={view} onViewChange={changeView} onHome={openHome} />
+      <Toolbar view={view} onViewChange={changeView} />
 
       <main className="editor-workspace">
         

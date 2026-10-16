@@ -1,4 +1,5 @@
 import { ArrowRight, Box, CircleDot, MoveUpRight, Square } from "lucide-react";
+import LandingStory from "./LandingStory";
 import "./LandingPage.css";
 
 type Props = { onOpenEditor: () => void };
@@ -30,7 +31,7 @@ export default function LandingPage({ onOpenEditor }: Props) {
             <p className="landing-lede">Turn a floor plan into a network of hubs, nodes, and closed cable rings. See the route, check the rules, and understand the cost.</p>
             <div className="landing-actions">
               <button className="landing-button-primary" onClick={onOpenEditor}>Open the editor <ArrowRight size={18} /></button>
-              <a href="#plan-preview" className="landing-button-text">See the plan views <span>↗</span></a>
+              <a href="#route-comparison" className="landing-button-text">Compare cable routes <span>↗</span></a>
             </div>
             <div className="landing-proof"><CircleDot size={17} /><span>Routes shaped by rooms, walls, and constraints.</span></div>
           </div>
@@ -63,6 +64,7 @@ export default function LandingPage({ onOpenEditor }: Props) {
           </div>
         </section>
         <div className="landing-footnote"><span>01 / PLAN</span><span>02 / ROUTE</span><span>03 / VALIDATE</span><span className="landing-footnote-end">One plan. Two ways to see the network.</span></div>
+        <LandingStory onOpenEditor={onOpenEditor} />
       </main>
     </div>
   );
