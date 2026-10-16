@@ -29,6 +29,7 @@ const WINDOW_SILL = 0.9;
 const CABLE_HEIGHT: Record<CableHeight, number> = { floor: 0.08, skirting: 0.3, ceiling: 2.5 };
 const CABLE_STEP = 0.04;
 const CABLE_RADIUS = 0.03;
+const CABLE_COLOR_3D = "#ffd400";
 const CABINET_HEIGHT = 0.5;
 const DIM = 0.15; // opacity of what isn't the inspected hub's
 const SLAB = 0.15; // the floor slab's thickness, below the floor (y = 0)
@@ -105,31 +106,48 @@ function useWallMaterial(finish: Exclude<CableWallFinish, "plain">) {
     return material;
 }
 
-function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material }: {
-    plan: CablePlan; shapes: CableShape[]; bottom: number; top: number; color: string; opacity?: number; material?: THREE.Material;
+function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise = false }: {
+    plan: CablePlan; shapes: CableShape[]; bottom: number; top: number; color: string; opacity?: number; material?: THREE.Material; rise?: boolean;
 }) {
+    const meshRef = useRef<THREE.Mesh>(null);
+    const startedAt = useRef<number | null>(null);
+    const finished = useRef(!rise);
     const geometry = useMemo(
         () => new THREE.ExtrudeGeometry(shapes.map((s) => toShape(plan, s)), { depth: Math.max(top - bottom, 0.001), bevelEnabled: false }),
         [plan, shapes, bottom, top]
     );
     useDispose(geometry);
+    useEffect(() => {
+        startedAt.current = null;
+        finished.current = !rise;
+        if (meshRef.current) meshRef.current.scale.z = rise ? 0 : 1;
+    }, [geometry, rise]);
+    useFrame(({ clock }) => {
+        const mesh = meshRef.current;
+        if (!mesh || finished.current) return;
+        if (startedAt.current === null) startedAt.current = clock.getElapsedTime();
+        const t = Math.min((clock.getElapsedTime() - startedAt.current - 1.0) / 1.5, 1);
+        if (t <= 0) return;
+        mesh.scale.z = 1 - (1 - t) ** 3;
+        if (t === 1) finished.current = true;
+    });
     if (top <= bottom || shapes.length === 0) return null;
     return (
-        <mesh geometry={geometry} material={material} rotation={[-Math.PI / 2, 0, 0]} position={[0, bottom, 0]} raycast={noRaycast}>
+        <mesh ref={meshRef} geometry={geometry} material={material} rotation={[-Math.PI / 2, 0, 0]} position={[0, bottom, 0]} scale={[1, 1, rise ? 0 : 1]} raycast={noRaycast}>
             {!material && <meshStandardMaterial color={color} transparent={opacity < 1} opacity={opacity} />}
         </mesh>
     );
 }
 
-function PlanWalls({ plan, doors, wallTop, wallColor, windowColor, material }: {
-    plan: CablePlan; doors: CableShape[]; wallTop: number; wallColor: string; windowColor: string; material?: THREE.Material;
+function PlanWalls({ plan, doors, wallTop, wallColor, windowColor, material, rise = true }: {
+    plan: CablePlan; doors: CableShape[]; wallTop: number; wallColor: string; windowColor: string; material?: THREE.Material; rise?: boolean;
 }) {
     return <>
-        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={wallColor} material={material} />
-        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} />
-        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={wallColor} material={material} />
+        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={wallColor} material={material} rise={rise} />
+        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
+        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={wallColor} material={material} rise={rise} />
         <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={windowColor} opacity={0.45} />
-        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} />
+        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
     </>;
 }
 
@@ -281,18 +299,43 @@ function pathOf(plan: CablePlan, ring: XY[], y: number) {
 }
 
 // A tube along a path; enough segments that each corner stays sharp (~5 cm).
-function Tube({ path, radius, color, opacity = 1, onClick }: {
+function Tube({ path, radius, color, opacity = 1, onClick, reveal }: {
     path: THREE.CurvePath<THREE.Vector3>; radius: number; color: string; opacity?: number;
     onClick?: (e: ThreeEvent<MouseEvent>) => void;
+    reveal?: { delay: number; duration: number };
 }) {
+    const meshRef = useRef<THREE.Mesh>(null);
+    const startedAt = useRef<number | null>(null);
+    const finished = useRef(!reveal);
+    const shouldReveal = reveal !== undefined;
+    const revealDelay = reveal?.delay;
+    const revealDuration = reveal?.duration;
     const geometry = useMemo(() => {
         const segments = Math.max(16, Math.ceil(path.getLength() / 0.05));
-        return new THREE.TubeGeometry(path, segments, radius, 8, false);
-    }, [path, radius]);
+        const tube = new THREE.TubeGeometry(path, segments, radius, 8, false);
+        if (shouldReveal) tube.setDrawRange(0, 0);
+        return tube;
+    }, [path, radius, shouldReveal]);
     useDispose(geometry);
+    useEffect(() => {
+        startedAt.current = null;
+        finished.current = !shouldReveal;
+        geometry.setDrawRange(0, shouldReveal ? 0 : Infinity);
+    }, [geometry, shouldReveal, revealDelay, revealDuration]);
+    useFrame(({ clock }) => {
+        const mesh = meshRef.current;
+        if (!reveal || !mesh || finished.current) return;
+        if (startedAt.current === null) startedAt.current = clock.getElapsedTime();
+        const elapsed = clock.getElapsedTime() - startedAt.current - reveal.delay;
+        if (elapsed <= 0) return;
+        const t = Math.min(elapsed / reveal.duration, 1);
+        const segments = Math.max(16, Math.ceil(path.getLength() / 0.05));
+        mesh.geometry.setDrawRange(0, Math.min(segments, Math.ceil(segments * t)) * 8 * 6);
+        if (t === 1) finished.current = true;
+    });
     if (path.curves.length === 0) return null;
     return (
-        <mesh geometry={geometry} onClick={onClick} raycast={onClick ? undefined : noRaycast}>
+        <mesh ref={meshRef} geometry={geometry} onClick={onClick} raycast={onClick ? undefined : noRaycast}>
             <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} transparent={opacity < 1} opacity={opacity} />
         </mesh>
     );
@@ -530,7 +573,7 @@ export default function CablePlan3D() {
                         </>
                     )}
                     {!hasManualWalls && (layers.wallFinish !== "plain" ? (
-                        <Suspense fallback={<PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} />}>
+                        <Suspense fallback={<PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} rise={false} />}>
                             <TexturedPlanWalls key={layers.wallFinish} finish={layers.wallFinish} plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} />
                         </Suspense>
                     ) : (
@@ -570,18 +613,19 @@ export default function CablePlan3D() {
 
             {layers.cables && (
                 <>
-                    {rings.map(({ hub, path, faint }) => {
+                    {rings.map(({ hub, path, faint }, ringIndex) => {
                         return (
                             <group key={`${hub.hub_id}-${faint ? "overlay" : "shown"}`}>
                                 <Tube
                                     path={path}
                                     radius={faint ? CABLE_RADIUS * 0.6 : CABLE_RADIUS}
-                                    color={faint ? colors.naive : hubColor(hub.hub_id)}
+                                    color={faint ? colors.naive : CABLE_COLOR_3D}
                                     opacity={opacity(hub.hub_id) * (faint ? 0.6 : 1)}
                                     onClick={faint ? undefined : pick(hub.hub_id)}
+                                    reveal={faint ? undefined : { delay: 2.6 + ringIndex * 1.7, duration: 1.5 }}
                                 />
                                 {layers.animate && !faint && opacity(hub.hub_id) === 1 && (
-                                    <Pulses path={path} color={hubColor(hub.hub_id)} />
+                                    <Pulses path={path} color={CABLE_COLOR_3D} />
                                 )}
                             </group>
                         );
