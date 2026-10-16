@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Box, Camera, FolderOpen, Redo2, Ruler, Save, Square, SquarePlus, Undo2 } from "lucide-react";
 
 import AccountButtons from "./AccountButtons";
+import { useAuth } from "./AuthContext";
+import ProjectsPanel from "./ProjectsPanel";
 import ImportResPlanButton from "./resplan/ImportResPlanButton";
 import CablePlanControls from "./cable/CablePlanControls";
-import { useEditor, normalizeDoc } from "./store";
+import { useEditor } from "./store";
 import styles from "./Toolbar.module.css";
 import type { LengthUnit } from "./units";
 
@@ -17,12 +20,18 @@ type ToolbarProps = {
 const ICON = { size: 18, strokeWidth: 1.75 } as const;
 
 function Toolbar({ view, onViewChange }: ToolbarProps) {
-  const doc = useEditor((s) => s.doc);
+  const { user } = useAuth();
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
   const canUndo = useEditor((s) => s.undoStack.length > 0);
   const canRedo = useEditor((s) => s.redoStack.length > 0);
   const projectName = useEditor((s) => s.currentProjectName);
+  const projectId = useEditor((s) => s.currentProjectId);
+  const saveProject = useEditor((s) => s.saveProject);
+
+  // Which project modal is open, plus a short-lived status for quick saves.
+  const [panel, setPanel] = useState<"save" | "open" | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const addNode = useEditor((s) => s.addNode);
   const cameraMode = useEditor((s) => s.cameraMode);
@@ -46,12 +55,23 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
       length: 4,
     });
 
-  const save = () => localStorage.setItem("scene", JSON.stringify(doc));
+  const flash = (msg: string) => {
+    setStatus(msg);
+    setTimeout(() => setStatus(null), 2500);
+  };
 
-  const load = () => {
-    const text = localStorage.getItem("scene");
-    if (!text) return;
-    useEditor.setState({ doc: normalizeDoc(JSON.parse(text)), undoStack: [], redoStack: [], selectedIds: [] });
+  // Already a saved project: one click saves in place. Otherwise ask for a name.
+  const save = async () => {
+    if (user && projectId && projectName) {
+      try {
+        await saveProject(projectName);
+        flash("Saved");
+      } catch (err) {
+        flash(err instanceof Error ? err.message : "Save failed");
+      }
+    } else {
+      setPanel("save");
+    }
   };
 
   return (
@@ -61,7 +81,9 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
         <span className={styles.logo}>GridMind </span>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
-          <span className={styles.titleNote}>Save keeps a copy in this browser</span>
+          <span className={styles.titleNote}>
+            {status ?? (user ? (projectId ? "Saved to your account" : "Not saved yet") : "Log in to save your plans")}
+          </span>
         </div>
       </div>
 
@@ -136,15 +158,17 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
       <div className={styles.right}>
         <ImportResPlanButton />
         <div className={styles.group} role="group" aria-label="Plan file">
-          <button type="button" className={styles.btn} onClick={save} title="Save in this browser">
+          <button type="button" className={styles.btn} onClick={() => void save()} title="Save to your account">
             <Save {...ICON} /> <span className={styles.label}>Save</span>
           </button>
-          <button type="button" className={styles.btn} onClick={load} title="Load from this browser">
+          <button type="button" className={styles.btn} onClick={() => setPanel("open")} title="Open a saved plan">
             <FolderOpen {...ICON} /> <span className={styles.label}>Load</span>
           </button>
         </div>
         <AccountButtons />
       </div>
+
+      {panel && <ProjectsPanel mode={panel} onClose={() => setPanel(null)} />}
     </header>
   );
 }

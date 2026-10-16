@@ -286,6 +286,27 @@ interface EditorState {
     saveProject: (name: string) => Promise<void>;
     loadProject: (projectId: string) => Promise<void>;
     setProjectName: (name: string) => void;
+    listProjects: () => Promise<ProjectSummary[]>;
+    deleteProject: (projectId: string) => Promise<void>;
+    newProject: () => void;
+}
+
+const emptyDoc = (): SceneDocument => ({
+    id: crypto.randomUUID(),
+    version: 1,
+    room: { width: 5, length: 4, height: 2.7 },
+    nodes: {},
+    floorPlan: [],
+    planWalls: [],
+    openings: [],
+    planFurniture: [],
+    cablePlan: null,
+});
+
+export interface ProjectSummary {
+    id: string;
+    name: string;
+    updated_at: string;
 }
 
 export const useEditor = create<EditorState>((set, get) => {
@@ -304,17 +325,7 @@ export const useEditor = create<EditorState>((set, get) => {
     };
 
     return {
-        doc: {
-            id: crypto.randomUUID(),
-            version: 1,
-            room: { width: 5, length: 4, height: 2.7 },
-            nodes: {},
-            floorPlan: [],
-            planWalls: [],
-            openings: [],
-            planFurniture: [],
-            cablePlan: null,
-        },
+        doc: emptyDoc(),
 
         dismissedTips: [],
         selectedIds: [],
@@ -375,7 +386,8 @@ export const useEditor = create<EditorState>((set, get) => {
                 const { error } = await supabase
                     .from("projects")
                     .update({ name, data: doc, updated_at: new Date().toISOString() })
-                    .eq("id", currentProjectId);
+                    .eq("id", currentProjectId)
+                    .eq("user_id", user.id);
 
                 if (error) throw error;
 
@@ -415,6 +427,37 @@ export const useEditor = create<EditorState>((set, get) => {
         },
 
         setProjectName: (name: string) => set({ currentProjectName: name }),
+
+        // Names and dates only: the heavy `data` column stays on the server
+        // until a project is actually opened.
+        listProjects: async () => {
+            const { data, error } = await supabase
+                .from("projects")
+                .select("id, name, updated_at")
+                .order("updated_at", { ascending: false });
+            if (error) throw error;
+            return data ?? [];
+        },
+
+        deleteProject: async (projectId: string) => {
+            const { error } = await supabase.from("projects").delete().eq("id", projectId);
+            if (error) throw error;
+            if (get().currentProjectId === projectId) {
+                set({ currentProjectId: null, currentProjectName: null });
+            }
+        },
+
+        // Start from a blank document, detached from any saved project.
+        newProject: () =>
+            set({
+                doc: emptyDoc(),
+                currentProjectId: null,
+                currentProjectName: null,
+                undoStack: [],
+                redoStack: [],
+                selectedIds: [],
+                cableFocus: null,
+            }),
 
         setMode: (m) => set({ mode: m }),
 
