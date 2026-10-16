@@ -282,6 +282,9 @@ export default function CablePlan3D() {
         () => (stored && layers.overlay && layers.overlay !== layers.solution ? solutionView(stored, layers.overlay) : null),
         [stored, layers.overlay, layers.solution]
     );
+    const hasManualWalls = useEditor((s) =>
+        Object.values(s.doc.nodes).some((node) => node.type === "wall")
+    );
     const draggable = layers.solution === "ours";
     const units = useEditor((s) => s.units);
     const focus = useEditor((s) => s.cableFocus);
@@ -410,13 +413,15 @@ export default function CablePlan3D() {
                             )}
                         </>
                     )}
-                    <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={colors.wall} />
-                    {/* Over each door, the wall carries on above its head. */}
-                    <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={colors.wall} />
-                    {/* Windows: wall below the sill and above the head, glass between. */}
-                    <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={colors.wall} />
-                    <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={colors.window} opacity={0.45} />
-                    <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={colors.wall} />
+                    {!hasManualWalls && (<>
+                        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={colors.wall} />
+                        {/* Over each door, the wall carries on above its head. */}
+                        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={colors.wall} />
+                        {/* Windows: wall below the sill and above the head, glass between. */}
+                        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={colors.wall} />
+                        <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={colors.window} opacity={0.45} />
+                        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={colors.wall} />
+                    </>)}
                 </>
             )}
 

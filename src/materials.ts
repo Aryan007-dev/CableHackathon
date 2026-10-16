@@ -7,7 +7,7 @@ export type TextureFinish = { kind: "texture"; map: string; normalMap: string; r
 export type Finish = ColorFinish | TextureFinish
 
 export const materials: Record<string, Finish> = {
-  wall: { kind: "color", color: "#c10000" },
+  wall: { kind: "color", color: "#e4e3e4cf" },
   "warm-white": { kind: "color",color: "#f3ede3" },
   sage: { kind: "color",color: "#9caf88" },
   clay: { kind: "color",color: "#b5651d" },

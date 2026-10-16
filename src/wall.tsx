@@ -109,7 +109,7 @@ function Wall({
       >
         {pieces.map((piece, i) => (
           <mesh key={`piece-${i}`} position={[piece.x, piece.y, 0]}>
-            <boxGeometry args={[piece.width, piece.height, thickness]} />
+            <boxGeometry args={[piece.width, piece.height, thickness*1.5]} />
 
             <SurfaceMaterial
               finish={materials[materialId]}
