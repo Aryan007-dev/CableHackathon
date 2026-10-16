@@ -8,9 +8,12 @@ Editor JSON = export_editor.export_plan's output, plus:
   status, reason, warning      "solved" | "infeasible" | "excluded" | "failed"
   checks                       every hard-rule check [{name, passed, detail}]
   problems                     where the crossings and overlaps are
-  naive_metrics, hubs[].naive_ring, naive_problems
-                               the same hubs and orders with each leg routed
-                               on its own (before step 7), for comparison
+  alternatives                 the same plan solved other ways, to compare:
+                               naive (our zones and orders, each leg routed on
+                               its own), greedy and savings (baselines.py); each
+                               {label, status, reason, metrics, valid, hubs, problems}
+  extended                     notes when a room over 100 m² was split (bigrooms.py):
+                               outside the deck's rules
   submission                   the slide-8 submission
   source                       {"kind": "dataset" | "drawn"}
 """
@@ -27,6 +30,9 @@ from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import polygonize, unary_union
 
 from export_editor import ROOM_TYPES, export_plan, polygons, ring_of
+from baselines import LABELS as BASELINE_LABELS, run as run_baseline
+from bigrooms import needs_split, split_big_rooms
+from explain import explain
 from io_format import make_input
 from resplan_utils import normalize_keys
 from solve import Failed, choose, design, prepare, solve_with_hubs
@@ -224,21 +230,49 @@ def problems(sub, inp):
     return {"crossings": [[round(x, 3), round(y, 3)] for x, y in crossings], "overlaps": overlaps}
 
 
-def solve_to_editor(plan, inp=None, hub_points=None, labels=None, source="dataset"):
+def _hubs_of(sub):
+    """A submission's hubs as the editor draws them."""
+    return [{"hub_id": h["hub_id"], "room_id": h["room_id"],
+             "x": h["location"]["x"], "y": h["location"]["y"],
+             "assigned_rooms": h["assigned_rooms"], "sequence": h["closed_sequence"],
+             "ring_length_m": h["ring_length_m"], "ring": ring_of(h)} for h in sub["hubs"]]
+
+
+def _alternative(label, plan, inp, attempt):
+    """One way of solving, judged like ours: attempt() -> (metrics, sub)."""
+    try:
+        result = attempt()
+    except Failed as f:
+        return {"label": label, "status": f.status, "reason": f.reason, "metrics": {}, "valid": False, "hubs": []}
+    if result is None:
+        return {"label": label, "status": "failed", "reason": "a leg has no route", "metrics": {}, "valid": False, "hubs": []}
+    metrics, sub = result
+    checks = validate_submission(plan, inp, sub)
+    return {"label": label, "status": "solved", "reason": None, "metrics": metrics,
+            "valid": all(c["passed"] for c in checks), "hubs": _hubs_of(sub), "problems": problems(sub, inp)}
+
+
+def solve_to_editor(plan, inp=None, hub_points=None, labels=None, source="dataset", baselines=True, extended=None):
     """Solve one plan and return the editor JSON (never raises for a plan
     that can't be solved: the result says why, and still draws the plan).
 
     hub_points: fix the zoning and the hubs instead of choosing them: a list
     of (assigned room ids, (x, y) in metres), one per hub.
+    baselines: also solve it greedily and with Clarke–Wright, to compare.
+    A room over 100 m² is split first (bigrooms.py), flagged in `extended`.
     """
     area = plan.get("area")
     if not isinstance(area, (int, float)) or not area > 0 or plan.get("inner") is None or plan["inner"].is_empty:
         return {"plan_id": int(plan.get("id") or 0), "status": "failed", "source": {"kind": source},
                 "reason": "the plan has no building outline or recorded floor area, so its scale is unknown",
                 "rooms": [], "nodes": [], "hubs": [], "walls": [], "metrics": {}}
+    if inp is None and needs_split(plan):
+        plan, extended, split_labels = split_big_rooms(plan)
+        labels = {**split_labels, **(labels or {})}
     inp = inp or make_input(plan)
     info = {}
-    sub = metrics = naive = None
+    sub = metrics = ctx = None
+    zones = picked = None
     status, reason = "solved", None
     try:
         ctx = prepare(plan, inp, info)
@@ -248,22 +282,35 @@ def solve_to_editor(plan, inp=None, hub_points=None, labels=None, source="datase
             (metrics, sub), zones, picked = solve_with_hubs(ctx, zones, [p for _, p in hub_points])
         else:
             (metrics, sub), zones, picked = choose(ctx)
-        naive = design(ctx, zones, picked, naive=True)
     except Failed as f:
         status, reason = f.status, f.reason
 
     out = export_plan(plan, inp, sub, metrics, labels)
     out.update(status=status, reason=reason, warning=info.get("warning"), source={"kind": source})
+    if extended:
+        out["extended"] = extended
     if sub:
         out["checks"] = [{k: c[k] for k in ("name", "passed", "detail")} for c in validate_submission(plan, inp, sub)]
         out["problems"] = problems(sub, inp)
         out["submission"] = sub
-        if naive:
-            naive_metrics, naive_sub = naive
-            out["naive_metrics"] = naive_metrics
-            out["naive_problems"] = problems(naive_sub, inp)
-            for hub, h in zip(out["hubs"], naive_sub["hubs"]):
-                hub["naive_ring"] = ring_of(h)
+    alternatives = {}
+    if sub:
+        alternatives["naive"] = _alternative("Naive routing", plan, inp, lambda: design(ctx, zones, picked, naive=True))
+    if baselines and ctx is not None:
+        for method, label in BASELINE_LABELS.items():
+            alternatives[method] = _alternative(label, plan, inp, lambda m=method: run_baseline(ctx, m))
+    if alternatives:
+        out["alternatives"] = alternatives
+    if sub:
+        label_of = {r["room_id"]: r["label"] for r in out["rooms"] if r["room_id"]}
+        out["explain"] = explain(ctx, zones, picked, sub, lambda i: label_of.get(ctx.rid_of[i], i))
+        naive = alternatives.get("naive", {})
+        if naive.get("valid") and naive["metrics"]["J"] > metrics["J"] + 0.05:
+            out["explain"]["summary"].append(
+                f"Routing all the rings together, instead of each leg on its own, saved "
+                f"{naive['metrics']['J'] - metrics['J']:.1f} of J (naive routing: {naive['metrics']['J']:.1f}).")
+        for note in extended or []:
+            out["explain"]["summary"].append(f"Outside the deck's rules: {note}.")
     return out
 
 
@@ -304,9 +351,15 @@ def resolve_json(data, move=None):
                 r["room_id"] for r in data["rooms"] if r.get("hub_id") == h["hub_id"] and r.get("room_id"))
             hub_points = [(zone(h), (move["x"], move["y"]) if h["hub_id"] == move["hub_id"] else (h["x"], h["y"]))
                           for h in data["hubs"]]
-        out = solve_to_editor(plan, inp, hub_points, labels, source)
-        if move and out.get("hubs"):
-            out["notice"] = _snap_notice(out, move)
+        # A hub drag only changes our design: keep the baselines as they were.
+        out = solve_to_editor(plan, inp, hub_points, labels, source,
+                              baselines=not move, extended=data.get("extended"))
+        if move:
+            kept = {k: v for k, v in (data.get("alternatives") or {}).items() if k in BASELINE_LABELS}
+            if kept:
+                out["alternatives"] = {**out.get("alternatives", {}), **kept}
+            if out.get("hubs"):
+                out["notice"] = _snap_notice(out, move)
     if data.get("frame"):
         out["frame"] = data["frame"]  # a drawn plan stays on its drawing
     return out

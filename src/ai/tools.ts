@@ -5,6 +5,7 @@ import type { Compass } from "../catalog";
 import { FURNITURE_BY_ID } from "../catalog";
 import { materials } from "../materials";
 import { PX_PER_METER } from "../units";
+import { CABLE_TOOLS } from "./describeCable";
 
 // Describes one input parameter in JSON Schema. `type` is required; the
 // rest are optional. `items` lets a parameter be an array (e.g. position),
@@ -932,15 +933,20 @@ const planRoom: Tool = {
 };
 
 export const TOOLS: Tool[] = [inspectRoom, createRoom2d, addFurniture, undo, addWalls, drawRoom, addlights, listScene, rotateObject, moveObject, deleteObject, setMaterial, resizeObject, adjustLight, findFreeSpace, planRoom, resetRoom];
-export function runTool(name: string, args: Record<string, unknown>): string {
-  const tool = TOOLS.find((t) => t.name === name);
+// The cable tools only exist while a Cable Ring plan is loaded.
+export function activeTools(): { name: string; description: string; input_schema: Tool["input_schema"] }[] {
+  return useEditor.getState().doc.cablePlan ? [...TOOLS, ...CABLE_TOOLS] : TOOLS;
+}
+
+export async function runTool(name: string, args: Record<string, unknown>): Promise<string> {
+  const tool = TOOLS.find((t) => t.name === name) ?? CABLE_TOOLS.find((t) => t.name === name);
   if (!tool) {
     console.log("[runTool] UNKNOWN:", name);
     return `Unknown tool: ${name}`;
   }
   console.log("[runTool] calling:", name, "args:", JSON.stringify(args));
   try {
-    const result = tool.handler(args);
+    const result = await tool.handler(args);
     console.log("[runTool] result:", name, "->", result);
     return typeof result === "string" ? result : `Ran ${name} successfully.`;
   } catch (err) {

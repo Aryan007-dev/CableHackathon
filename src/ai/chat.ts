@@ -1,7 +1,8 @@
 import { systemPrompt } from "./systemPrompt";
 
-import { runTool, TOOLS } from "./tools";
+import { activeTools, runTool } from "./tools";
 import { geminiLimiter } from "../rateLimiter";
+import { supabase } from "../supabase";
 export type ChatMessage={
     role:"system"|"user"|"assistant"|"tool";
     content:string
@@ -14,7 +15,7 @@ export async function sendMessage(history:ChatMessage[] ,userText:string):Promis
     // history, so it must always carry the FULL scene — a diff would have
     // nothing to apply to.
     const apiMessage:ChatMessage[]=[{role:"system", content:systemPrompt()},...history,{role:"user",content:userText}];
-    const tools =TOOLS.map((t)=>({
+    const tools =activeTools().map((t)=>({
         type:"function",
         function:{name:t.name,description:t.description,parameters:t.input_schema}
     }));
@@ -31,9 +32,11 @@ export async function sendMessage(history:ChatMessage[] ,userText:string):Promis
         // Wait if we're hitting rate limits
         await geminiLimiter.throttle();
 
+        // The deployed /api/chat only answers signed-in users (api/chat.ts).
+        const { data: { session } } = await supabase.auth.getSession();
         const res = await fetch("/api/chat",{
             method:"POST",
-            headers:{"Content-Type":"application/json"},
+            headers:{"Content-Type":"application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {})},
             body:JSON.stringify({messages:apiMessage,tools})
 
         });
@@ -48,7 +51,7 @@ export async function sendMessage(history:ChatMessage[] ,userText:string):Promis
         for(const call of message.tool_calls){
             const args =JSON.parse(call.function.arguments||"{}")
             console.log("[chat] -> tool:", call.function.name, "args:", JSON.stringify(args));
-            const result = runTool(call.function.name,args)
+            const result = await runTool(call.function.name,args)
             console.log("[chat] <- tool:", call.function.name, "result:", result);
 
             apiMessage.push({ role: "tool", tool_call_id: call.id, content: result });

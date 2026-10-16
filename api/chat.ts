@@ -57,15 +57,42 @@ const PROVIDERS = {
 
 } as const;
 
+// Only signed-in users may spend the AI key: the browser sends its Supabase
+// session token, and Supabase confirms it. Without the Supabase settings
+// nobody gets through (fail closed).
+async function signedIn(req: any): Promise<boolean> {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const auth = req.headers?.authorization;
+  if (!url || !anon || typeof auth !== "string" || !auth.startsWith("Bearer ")) return false;
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: anon, Authorization: auth } });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+const MAX_BODY = 1_000_000; // bytes: a long chat with the full scene stays far below this
+
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.end("Method Not Allowed");
     return;
   }
+  if (!(await signedIn(req))) {
+    res.statusCode = 401;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ role: "assistant", content: "Please sign in to use the assistant." }));
+    return;
+  }
 
   let body = "";
-  req.on("data", (chunk: Buffer) => (body += chunk));
+  req.on("data", (chunk: Buffer) => {
+    body += chunk;
+    if (body.length > MAX_BODY) req.destroy();
+  });
   req.on("end", async () => {
     try {
       const { messages, tools } = JSON.parse(body);

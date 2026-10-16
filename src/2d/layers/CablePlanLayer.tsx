@@ -5,7 +5,7 @@ import { formatArea, formatLength } from "../../units";
 import type { LengthUnit } from "../../units";
 import { moveHub } from "../../cable/cableActions";
 import { insidePolygon } from "../planGeometry";
-import { fromPlan, hubOfNode, hubVar, problemsToDraw, ringsToDraw, roomEdges, shapePath, toPlan } from "../../cable/cablePlan";
+import { fromPlan, hubOfNode, hubVar, ringsToDraw, roomEdges, shapePath, toPlan } from "../../cable/cablePlan";
 import type { CableLayers, CablePlan, CableShape, XY } from "../../cable/cablePlan";
 import "../../cable/cable.css";
 
@@ -58,10 +58,21 @@ export function CableRoomsLayer({ plan, layers }: { plan: CablePlan; layers: Cab
 
 const halo = { stroke: "var(--color-canvas)", strokeWidth: 3, paintOrder: "stroke" } as const;
 
-type OverlayProps = { plan: CablePlan; layers: CableLayers; units: LengthUnit; interactive: boolean };
+// plan: the solution being shown (cablePlan.solutionView); overlay: another
+// solution whose rings go underneath, dashed grey. interactive: rings, hubs
+// and nodes can be clicked (Select tool); draggable: hubs can be moved too
+// (our own solution only: the baselines are fixed).
+type OverlayProps = {
+    plan: CablePlan;
+    overlay: CablePlan | null;
+    layers: CableLayers;
+    units: LengthUnit;
+    interactive: boolean;
+    draggable: boolean;
+};
 
 // Rings, then room labels over them, then problem markers, nodes and hubs.
-export function CableOverlayLayer({ plan, layers, units, interactive }: OverlayProps) {
+export function CableOverlayLayer({ plan, overlay, layers, units, interactive, draggable }: OverlayProps) {
     const focus = useEditor((s) => s.cableFocus);
     const setFocus = useEditor((s) => s.setCableFocus);
     const busy = useEditor((s) => s.cableBusy);
@@ -70,11 +81,11 @@ export function CableOverlayLayer({ plan, layers, units, interactive }: OverlayP
     const [drag, setDrag] = useState<{ hubId: string; from: XY; at: XY } | null>(null);
 
     const hubOf = hubOfNode(plan);
-    const rings = ringsToDraw(plan, layers.compare);
-    const problems = problemsToDraw(plan, layers.compare);
+    const rings = ringsToDraw(plan, overlay);
+    const problems = plan.problems;
     const opacity = (hubId: string | null) => (focus && hubId !== focus ? DIM : 1);
     const toggleFocus = (hubId: string | null) => setFocus(hubId && hubId !== focus ? hubId : null);
-    const canEdit = interactive && !busy;
+    const canEdit = interactive && draggable && !busy;
 
     // Pointer position in plan pixels: undo the pan/zoom the group sits in.
     const toLocal = (e: React.PointerEvent): XY => {
@@ -95,28 +106,27 @@ export function CableOverlayLayer({ plan, layers, units, interactive }: OverlayP
     return (
         <g ref={group} pointerEvents="none" fontFamily="system-ui, sans-serif">
             {layers.cables &&
-                rings.map(({ hub, points, naive }) => {
+                rings.map(({ hub, points, faint }) => {
                     const line = points.map((p) => toPlan(plan, p).join(",")).join(" ");
-                    const both = layers.compare === "both";
                     return (
-                        <g key={`${hub.hub_id}-${naive ? "naive" : "final"}`} opacity={opacity(hub.hub_id)}>
+                        <g key={`${hub.hub_id}-${faint ? "overlay" : "shown"}`} opacity={faint ? 1 : opacity(hub.hub_id)}>
                             <polyline
                                 points={line}
                                 fill="none"
-                                stroke={hubVar(hub.hub_id)}
-                                strokeWidth={naive && both ? 2 : 3}
-                                strokeDasharray={naive && both ? "7 5" : undefined}
-                                strokeOpacity={naive && both ? 0.6 : 0.9}
+                                stroke={faint ? "var(--color-ink-faint)" : hubVar(hub.hub_id)}
+                                strokeWidth={faint ? 2.5 : 3}
+                                strokeDasharray={faint ? "7 5" : undefined}
+                                strokeOpacity={faint ? 0.8 : 0.9}
                                 strokeLinejoin="round"
                                 strokeLinecap="round"
                             />
-                            {layers.animate && !(naive && both) && (
+                            {layers.animate && !faint && (
                                 // White dashes marching hub -> N1 -> ... -> hub.
                                 <polyline className="cable-pulse" points={line} fill="none" stroke="#ffffff"
                                     strokeWidth={2} strokeDasharray="3 21" strokeLinecap="round" />
                             )}
                             {/* A wide invisible stroke, so the thin ring is easy to click. */}
-                            {interactive && !naive && (
+                            {interactive && !faint && (
                                 <polyline points={line} fill="none" stroke="transparent" strokeWidth={12}
                                     pointerEvents="stroke" style={{ cursor: "pointer" }}
                                     onPointerDown={(e) => { own(e); toggleFocus(hub.hub_id); }} />
@@ -229,10 +239,13 @@ export function CableOverlayLayer({ plan, layers, units, interactive }: OverlayP
                                 transform={`translate(${x} ${y})`}
                                 opacity={opacity(h.hub_id)}
                                 pointerEvents={interactive ? "all" : "none"}
-                                style={interactive ? { cursor: canEdit ? (drag ? "grabbing" : "grab") : "wait" } : undefined}
+                                style={interactive ? { cursor: busy ? "wait" : !draggable ? "pointer" : drag ? "grabbing" : "grab" } : undefined}
                                 onPointerDown={(e) => {
                                     own(e);
-                                    if (!canEdit) return;
+                                    if (!canEdit) {
+                                        if (!busy) toggleFocus(h.hub_id); // a baseline's hub: inspect only
+                                        return;
+                                    }
                                     e.currentTarget.setPointerCapture(e.pointerId);
                                     const at = toLocal(e);
                                     setDrag({ hubId: h.hub_id, from: at, at });

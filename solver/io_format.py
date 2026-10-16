@@ -1,11 +1,9 @@
 """The organisers' file formats: per-plan input (rooms + fixed nodes) and submission.
 
-INPUT: the organisers send one JSON per plan with the rooms and the fixed node
-points, but its format isn't in the problem statement yet. make_input()
-builds a STAND-IN with the same information from the ResPlan plan, so the
-solver and validator already work from "an input file". When the real
-format arrives, only read_input() needs writing; everything downstream
-uses the same dict:
+INPUT: one JSON per plan with the rooms and the node points. The organisers
+don't supply node positions (teams place them), so make_input() places one
+node per eligible room, deepest inside the room, snapped to the routing grid.
+Everything downstream (solver, checker) reads this dict:
 
   {"plan_id": int, "units": "m", "units_per_metre": float,
    "rooms": [{"room_id": "R01", "name": "living_0", "type": "living", "area_m2": 41.2}, ...],
@@ -20,11 +18,25 @@ SUBMISSION: exactly the structure on slide 8 of the problem statement.
 import json
 import math
 
+from routing import CELL
 from step1 import eligible_rooms, passage_graph, place_devices, plan_scale
 
 
+def snap_to_grid(plan, p):
+    """The centre of the routing grid cell (routing.Grid) holding point p.
+
+    Cable runs along cell centres. A node a few cm off its cell's centre
+    makes every leg reaching it jog sideways: two extra bends (1 m of J).
+    The node moves at most half a cell (~2.5 cm) each way, staying in its
+    cell, so nothing else about the plan changes.
+    """
+    x0, y0 = plan["inner"].bounds[0] - CELL, plan["inner"].bounds[1] - CELL
+    return (x0 + ((p.x - x0) // CELL + 0.5) * CELL, y0 + ((p.y - y0) // CELL + 0.5) * CELL)
+
+
 def make_input(plan):
-    """Stand-in input file: every eligible room with one node, in metres."""
+    """Stand-in input file: every eligible room with one node, in metres.
+    Nodes sit at the spot deepest inside each room, snapped to the grid."""
     scale = plan_scale(plan)
     G = passage_graph(plan)
     rooms = sorted(eligible_rooms(G, scale), key=lambda r: r["id"])
@@ -34,16 +46,11 @@ def make_input(plan):
         rid = f"R{k:02d}"
         out_rooms.append({"room_id": rid, "name": r["id"], "type": r["type"],
                           "area_m2": round(r["area_m2"], 4)})
-        p = points[r["id"]]
+        x, y = snap_to_grid(plan, points[r["id"]])
         nodes.append({"node_id": f"N{k}", "room_id": rid,
-                      "x": round(p.x / scale, 6), "y": round(p.y / scale, 6)})
+                      "x": round(x / scale, 6), "y": round(y / scale, 6)})
     return {"plan_id": int(plan["id"]), "units": "m", "units_per_metre": scale,
             "rooms": out_rooms, "nodes": nodes}
-
-
-def read_input(path):
-    """The organisers' input file -> the dict above. Not written yet: format unknown."""
-    raise NotImplementedError("waiting for a sample input file from the organisers")
 
 
 def submission(inp, hubs):
@@ -53,9 +60,9 @@ def submission(inp, hubs):
     assigned_rooms, assigned_nodes, closed_sequence, and legs: a list of
     (from_id, to_id, polyline in metres).
 
-    EXTENSION: slide 8 has node ids but no node coordinates, which is fine
-    when the organisers supply the nodes. We place our own, so the file also
-    carries `rooms` and `nodes`; otherwise a checker couldn't know where N1 is.
+    EXTENSION: slide 8 has node ids but no node coordinates. Teams place their
+    own nodes, so the file also carries `rooms` and `nodes`; otherwise a
+    checker couldn't know where N1 is.
     Extra keys should be harmless to a checker that ignores them.
     """
     out = []

@@ -21,6 +21,8 @@ uv pip install --python .venv/bin/python -r requirements.txt
 
 .venv/bin/python solve.py 10      # first 10 test plans, with overlay images
 .venv/bin/python solve.py 2000    # the whole test split (no images above 50 plans)
+.venv/bin/python solve_file.py "../archive (1)/ResPlan.pkl" --all --split test --jobs 6   # the same, 6 at once
+.venv/bin/python -m unittest test_solver   # checks on real plans
 ```
 
 The dataset is expected at `../archive (1)/ResPlan.pkl` with `split.json` next to
@@ -53,8 +55,17 @@ Output for each plan goes under `out/`:
 Per plan it writes `submission/<id>.json` (slide 8), `report/<id>.json`
 (status, metrics, every rule check) and `editor/<id>.json` under
 `out/runs/<file name>/` (or `--out DIR`). `--editor` also adds each result to
-the editor's cable menu (`public/cable-plans/`). The table it prints shows J
-next to the "naive J": the same hubs and orders with each leg routed alone.
+the editor's cable menu (`public/cable-plans/`), and `--jobs N` solves N plans
+at once, one process each (6 on an 8-core laptop: the whole test split in
+about an hour, baselines included). The table it prints shows our
+hubs and J next to each comparison's hubs/J: naive (our hubs and orders, each
+leg routed alone), greedy and Clarke–Wright (see [Baselines](#baselines)).
+
+A plan with a room over 100 m² can't be served under the deck (its one node
+sits on one ring, and a hub takes at most 100 m²), and the organisers leave
+such plans out. For our own plans the room is split into ⌈area / 100⌉ parts of
+equal area, each with its own node (`bigrooms.py`); the result is flagged
+"extended rules" everywhere it appears.
 
 The pickle is read with an allowlist of exactly the classes the official
 file uses (shapely `from_wkb`, numpy `dtype`/`scalar`, networkx `Graph` and
@@ -80,15 +91,110 @@ Run `npm run dev`. Three ways to get a cable plan on screen:
    solver keeps the zones and the other hubs, snaps the hub to the nearest
    allowed spot (saying so if it moved) and re-routes. Cmd/Ctrl+Z undoes it.
 
-The cable panel (bottom right) shows H, J, L, X, O, B with the naive numbers
-struck through, layer switches (rooms, labels, cables, problems in red,
-animated flow, 3D cutaway), the naive/final/both comparison, and in 3D the
-floor (wood, tiles or zone colours, on a slab) and cable height (floor,
-skirting, ceiling), each hub's ring (click one to inspect it; the
-rest dim), every rule check, and export: PNG, SVG and PDF of the 2D plan, a
-3D PNG, the submission JSON, and the plan JSON.
+The cable panel (bottom right) shows H, J, L, X, O, B; the Compare table
+(ours against the baselines, see below); **Why this design** (the solver's
+own reasons, see [Explanations](#explanations)); layer switches (rooms,
+labels, dimensions, cables, problems in red, animated flow, 3D cutaway); and
+in 3D the floor (wood, tiles or zone colours, on a slab) and cable height
+(floor, skirting, ceiling). Below that: each hub's ring (click one to inspect
+it and read its reasons; the rest dim), every rule check, and export: PNG,
+SVG and PDF of the 2D plan, a 3D PNG, the submission JSON, and the plan JSON.
+
+**Play story** walks through the design for a demo, a step every few
+seconds, captioned from the explanations: the rooms that need nodes, the
+zones and why there are that many, each hub with its spot and order, the cost
+against its lower bound, then greedy and Clarke–Wright overlaid. Stop (or the
+end) puts the layers back.
+
+**AI assistant** (the chat panel, left): while a cable plan is loaded, its
+prompt carries the rules, the design, the explanations and the comparison,
+and it is told to answer only from them. It has three cable tools:
+`focusCableHub` (highlight a ring), `showCableSolution` (draw a baseline,
+optionally overlaid) and `moveCableHub` (a live what-if: the hub moves, the
+solver re-routes, and the tool returns the old and new costs; Undo reverts).
+Code: `src/ai/describeCable.ts`. The deployed `/api/chat` (`api/chat.ts`)
+only answers signed-in users: it checks the Supabase session token the
+browser sends, so the AI key can't be used by anyone who finds the URL.
 
 Code: `src/cable/` and `src/2d/layers/CablePlanLayer.tsx`.
+
+## Baselines
+
+How good is the solver? `benchmark.py` solves a fixed sample of the test
+split (every 16th plan: 102 plans) four ways, all with the same nodes, grid,
+checker and ranking (fewest hubs, then J):
+
+- **Ours**: exact zoning, best hub and ring order, all rings routed together (step 7).
+- **Naive routing**: our zones, hubs and orders, but each leg routed on its own.
+- **Greedy** (`baselines.py`): grow each zone from the biggest unassigned room,
+  adding the nearest door-connected room while it fits; hub at the zone's most
+  open spot; nodes nearest-first; legs routed on their own.
+- **Clarke–Wright** (`baselines.py`): the classic savings algorithm for
+  capacitated vehicle routing, with the deck's zone rules: every room starts
+  as its own ring, and the door-connected pair whose merge saves the most
+  cable is merged while it still fits.
+
+There is no TSP baseline: each ring's order is already exact (at most 5 nodes
+per hub, every order tried), so a TSP solver would find the same orders.
+
+| | valid | H | J | L (m) | X | O (m) | B | vs ours: better / tied / worse |
+|---|---|---|---|---|---|---|---|---|
+| **Ours** | 102 | 1.94 | **41.1** | 32.0 | 0.04 | 0.26 | 17.2 | |
+| Naive routing | 102 | 1.94 | 49.6 | 31.9 | 0.85 | 6.15 | 14.5 | 0 / 3 / 99 |
+| Greedy | 102 | 1.94 | 54.6 | 34.1 | 1.38 | 5.58 | 16.1 | 0 / 0 / 102 |
+| Clarke–Wright | 102 | 1.94 | 49.7 | 32.0 | 0.90 | 5.94 | 14.4 | 0 / 3 / 99 |
+| *Lower bound* | | | *35.6* | | | | | |
+
+Ours has 25% less J than greedy and 17% less than Clarke–Wright, ranks first
+on 99 of the 102 plans and ties the other 3 (all one-room zones, where there
+is nothing to choose); no baseline beats it anywhere. The baselines all find
+the same number of hubs on this sample (the door-only zone rule leaves little
+room to choose), so the gain comes from hub placement and, above all, routing
+the rings together: crossings and overlap almost disappear, at the price of a
+few bends.
+
+**How close to optimal?** On every plan, J is above the [lower
+bound](#explanations) (no design with the same hubs can cost less on our
+grid): 15.3% above on average, 13.8% for the median plan. The bound leaves out
+bends at nodes and the turn-rounds of one-node rings, so part of that gap
+can't be closed by any design.
+
+An earlier run, before nodes were snapped to the grid, had ours at J 43.8
+and lost one plan (8620) to greedy: tiny out-and-back rings where off-centre
+nodes forced extra bends. Snapping fixed both.
+
+3 of the 102 plans have a room over 100 m², solved under the extended rules.
+In the editor, the cable panel's Compare table shows all four for the plan on
+screen; "Show" switches which one is drawn and "Overlay" puts another's rings
+underneath in grey.
+
+## Explanations
+
+`explain.py` turns what the solver computed into sentences, for the panel,
+the story and the AI assistant. Each one comes from the solver's own numbers,
+so it is true of the design shown:
+
+- **Why this many hubs.** Either it is the bound `max(⌈area/100⌉, ⌈nodes/5⌉)`,
+  or the rooms that can't share a hub are named with the reason ("Bedrooms
+  1–4 and Kitchen each connect only to Living (87 m²), and with it any of
+  them is over 100 m²"), and the exact search over every legal zone proves
+  nothing smaller exists.
+- **How the zoning was chosen**: how many zonings tie at that hub count, and
+  that the cheapest few were routed and compared by J.
+- **Per hub**: its rooms against the 100 m² / 5 node limits; the doors that
+  connect them; each neighbouring room it *didn't* take, and why (over 100 m²,
+  5 nodes already, or a different zoning was cheaper); its spot ("of 18,296
+  allowed spots this gives the shortest ring; the most open spot, which a
+  simple method would pick, adds 19.7 m"); its order against the next best;
+  and its ring's L, B, X and O.
+- **A lower bound on J.** Each zone's best ring by distance cost (cells walked
+  plus 0.5 m per bend inside a leg, from the exact distance fields) can't be
+  beaten by any routed ring: routing adds bends at nodes, crossings and
+  overlap, never removes length. The cheapest zoning's sum is therefore a
+  bound for every design with the same hub count, on our 5 cm grid (and with
+  hubs where we allow them: 0.5 m from walls, 10 cm from nodes). It is loose
+  for one-node rings (an out-and-back ring must turn round twice, which the
+  bound doesn't count), so the gap is largest on plans of tiny zones.
 
 ## The rules, and where each is enforced
 
@@ -129,8 +235,12 @@ plan ──► input (rooms + fixed nodes)
 | `territories.py` | Zones: Part A lists every legal group of rooms; Part B is the exact minimum cover search. Running it prints zonings. |
 | `loops.py` | Hub cells (0.5 m clearance), and node orders: every order for ≤ 7 nodes (Held–Karp above that). Each order is paired with its best hub spot, and the best few are kept. |
 | `refine.py` | Step 7: routes all rings against each other with J prices, then rips up and reroutes. |
-| `io_format.py` | The stand-in input file and the slide 8 submission structure. |
+| `io_format.py` | Our node placement (the input file) and the slide 8 submission structure. |
 | `solve.py` | Runs everything and writes the outputs. |
+| `explain.py` | The design's reasons in plain sentences, and the lower bound on J. |
+| `baselines.py`, `benchmark.py` | Greedy and Clarke–Wright, and the comparison on a sample. |
+| `bigrooms.py` | Extended rules: a room over 100 m² split for two hubs. |
+| `cable_api.py`, `solve_file.py` | Reading the dataset safely, the editor's JSON, the command line, `--serve`. |
 | `validate.py` | The independent checker and the metrics. It imports nothing from the solver. |
 | `resplan_utils.py` | The dataset's own helpers (MIT licence), unchanged. |
 
@@ -172,10 +282,16 @@ plan ──► input (rooms + fixed nodes)
   (cell, heading) graph. The graph is built once, and each leg only re-prices
   its edge weights with numpy. Paths cost exactly what the Python A*
   (`find_path`, kept as the readable reference) finds, and it's 14× faster.
-- **Axis-aligned stubs.** Nodes sit anywhere inside their cell. Instead of a
-  diagonal stub to the cell centre, the first and last straight runs are slid
-  sideways to pass exactly through the node. This stays inside the same row or
-  column of free cells.
+- **Nodes on cell centres.** We place the nodes (the organisers don't), at the
+  point deepest inside each room, then snapped to the centre of its 5 cm grid
+  cell (it moves 2.5 cm at most). Cable runs along cell centres, so a node off
+  centre made every leg reaching it jog sideways: two extra bends, 1 point of
+  J. Snapping cut average J by about 5% (bends 21.9 → 17.6 per plan on a 24-plan
+  sample), with every design still valid.
+- **Axis-aligned stubs.** A point that isn't on a cell centre (a hub dragged in
+  the editor, a node from an old file) is joined without a diagonal: the first
+  and last straight runs are slid sideways to pass exactly through it, inside
+  the same row or column of free cells.
 
 ---
 
@@ -206,11 +322,11 @@ invalid**, 113 infeasible, 30 outside the benchmark, 3 with no answer.
 
 ## Formats
 
-**Input.** The deck says the organisers send one input JSON per plan, with the
-rooms and fixed node points. **No sample has been provided**, so we place the
-nodes ourselves: one per eligible room, at the point deepest inside the room
-(furthest from its walls). `io_format.make_input` writes them to a file in this
-format:
+**Input.** The organisers **don't supply node positions**: teams place them
+(confirmed 2026-10-16). We place one per eligible room, at the point deepest
+inside the room (furthest from its walls), snapped to the centre of its grid
+cell. It's a neutral rule, the same for every plan, not tuned to lower J.
+`io_format.make_input` writes them to a file in this format:
 
 ```json
 {"plan_id": 2814, "units": "m", "units_per_metre": 20.48,
@@ -228,13 +344,9 @@ rooms under 1 m wide, where no point can be 0.5 m clear. Because we take the
 point furthest from the walls, our node meets the clearance whenever the room
 has any point that does.
 
-If the organisers do send input files for the scored plans, their nodes replace
-ours; only `io_format.read_input` needs writing.
-
 **Watch out:** the slide 8 output has node *ids* but no node *coordinates*. A
-checker can only verify our rings if it knows where our nodes are. So either
-the organisers supply the nodes, or our submission must carry them (see the
-open questions below).
+checker can only verify our rings if it knows where our nodes are, so our
+submission carries them (see below and the open questions).
 
 **Submission.** This is exactly the slide 8 structure: `plan_id`, `units`,
 `hubs[]` with `hub_id`, `room_id`, `location {x, y}`, `assigned_rooms`,
@@ -318,15 +430,15 @@ we chose the reading that can't make a plan invalid.
    zonings, a different one might route to a lower J.
 4. **Up to 50 tied zonings** are compared; plans with more ties are cut off at
    50.
-5. **Organisers' input files:** none provided. If they arrive, write
-   `io_format.read_input`.
+5. **Bends in one-node rings.** A hub chosen by distance can sit diagonally
+   from its node, so its out-and-back ring turns more than an in-line one
+   would. Small (about 1 point of J per such ring) and left as is.
 
 ## Open questions for the organisers
 
-- How do the hidden plans' **node positions** reach the checker? The deck
-  says the organisers send an input file per plan, but no sample or format has
-  been provided. If teams place their own nodes, may the submission carry them
-  in an extra `nodes` list (`node_id`, `room_id`, `x`, `y`)?
+- Teams place the nodes. May the submission carry them in an extra `nodes`
+  list (`node_id`, `room_id`, `x`, `y`), which slide 8 doesn't have? Is any
+  placement accepted (we use each room's deepest point), or is there a rule?
 - Does a ring passing over another node's point (not visiting it) count as
   invalid?
 - Are windows between two indoor rooms (likely mislabelled doors) still
@@ -336,20 +448,20 @@ we chose the reading that can't make a plan invalid.
 
 ## Results on the test split
 
-Last full run, 2026-10-16, all 1,632 test plans, deck rules, final code (step 7,
-routed-J selection, nodes inside the outline, balconies blocked, hub kept 2 cells
-from nodes):
+Last full run, 2026-10-16, all 1,632 test plans (`solve_file.py --all --split
+test --jobs 6`, 45 minutes with the baselines), nodes snapped to the grid:
 
 | | Plans |
 |---|---|
-| Solved, and every hard rule passes our checker | **1,582** |
+| Solved under the deck's rules, and every hard rule passes our checker | **1,582** |
 | Solved but failing a rule | 0 |
-| Infeasible: a room over 100 m² (44), or outside the building outline (3) | 47 |
-| Outside the benchmark: a room under 2 m², or a room reachable only via a balcony | 3 |
+| A room over 100 m²: infeasible under the deck, solved under the extended rules (room split, flagged) | 42 |
+| Infeasible: rooms outside the building outline (3 plans, plus 2 of the over-100 m² plans) | 5 |
+| Outside the benchmark: a room under 2 m², or nodes not in one connected free area | 3 |
 | Failed for any other reason | 0 |
 
-Speed: median 3.2 s per plan, slowest 14.0 s (routing the top 3 zonings and
-several ring orders each costs about 5× the earlier single-choice run).
+Under the deck's rules alone that is 1,582 valid, 47 infeasible and 3 outside the
+benchmark, exactly as before; every solved plan is valid.
 
 **Hubs** (H, which decides ranking first):
 
@@ -362,24 +474,19 @@ The rest need more hubs because of the zone rule: in hub-shaped homes every
 bedroom opens only onto the living room. The zoning search is exact, so these
 are true minimums under the rules, not missed savings.
 
-**Cost J**, averaged over valid plans:
+**Cost J**, averaged over the 1,582 valid plans under the deck's rules:
 
 | | J | L (m) | X | O (m) | B |
 |---|---|---|---|---|---|
-| before step 7 (each leg routed alone) | 51.9 | 32.0 | 1.13 | 5.35 | 17.9 |
-| step 7, first version | 43.1 | 32.3 | 0.07 | 0.03 | 20.9 |
-| **final code** | **43.9** | 32.5 | 0.05 | 0.21 | 22.0 |
+| each leg routed alone (naive) | 49.6 | | | | |
+| greedy baseline | 53.8 | | | | |
+| Clarke–Wright baseline | 50.0 | | | | |
+| ours, previous commit | 43.9 | 32.5 | 0.05 | 0.21 | 22.0 |
+| **ours, nodes on cell centres** | **41.5** | 32.4 | 0.05 | 0.21 | 17.3 |
 
-The final run is slightly *worse* on average than the first step-7 run, even
-though it chooses by routed J. The extra rules it now obeys cost more than the
-better choices save: nodes pulled inside the outline, balconies blocked and
-the hub kept away from nodes all remove routes the first version could use
-(some of which our stricter checker would now reject). On a 10-plan sample the
-routed-J choice alone took J from 42.7 to 41.9.
-
-1,507 of 1,582 plans have no crossings. 770 have no overlap and 1,101 have at
-most 0.25 m; most overlap is short retraced stubs into single-door rooms, which
-the deck allows but counts. Median J is 44.1.
-
-Bends are the largest cost after length: about 11 of J's 44 points. That's
-the next lever.
+Median J is 42.4; 1,504 plans have no crossing. Ours ranks first or ties on
+1,571 of the 1,582 plans. A baseline wins the other 11, 7 of them by less than
+0.3 of J; the largest gaps are plans 3147 and 3149 (Clarke–Wright, 2.1 and 1.9),
+15306 (naive, 1.8) and 16541 (greedy, 1.1). In those, our routing of all rings together (a
+local search) ends worse than routing each leg alone, or a different zoning
+routes better. Keeping the best of ours and the baselines would close all 11.

@@ -162,13 +162,6 @@
   font-size: 10px;
 }
 
-.metricNaive {
-  color: var(--color-ink-faint);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  text-decoration: line-through;
-}
-
 .section {
   margin-top: 10px;
   padding-top: 10px;
@@ -176,6 +169,7 @@
 }
 
 .section summary {
+  text-align: left;
   cursor: pointer;
   font-weight: 600;
 }
@@ -292,6 +286,19 @@
   line-height: 1.45;
 }
 
+.why {
+  margin: 6px 0 0;
+  text-align: left;
+  padding-left: 16px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.why li + li {
+  margin-top: 4px;
+}
+
 .checks {
   max-height: 160px;
   margin: 6px 0 0;
@@ -322,4 +329,74 @@
     bottom: 8px;
     width: calc(100% - 16px);
   }
+}
+
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare th,
+.compare td {
+  padding: 3px 4px;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.compare tbody th {
+  color: var(--color-ink-muted);
+  font-weight: 500;
+  text-align: left;
+}
+
+/* The best value in each row (among valid solutions). */
+.compare td[data-best="true"] {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.colBtn {
+  padding: 2px 4px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-ink-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.colBtn[data-active="true"] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+/* The story's caption, over the top of the view. */
+.storyCaption {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  z-index: 40;
+  width: max-content;
+  max-width: min(640px, calc(100% - 32px));
+  padding: 10px 14px;
+  transform: translateX(-50%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(31, 42, 36, 0.14);
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.storyCount {
+  margin-right: 8px;
+  color: var(--color-ink-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }

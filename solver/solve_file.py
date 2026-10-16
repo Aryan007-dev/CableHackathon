@@ -12,6 +12,7 @@ Options:
   --out DIR     where to write results (default: out/runs/<file name>/)
   --editor      also copy each result into ../public/cable-plans/ so the
                 editor's cable menu lists it
+  --jobs N      solve N plans at once, one process each (default 1)
 
 Writes per plan: submission/<id>.json (slide 8), report/<id>.json (status,
 metrics, every rule check) and editor/<id>.json (what the editor draws).
@@ -28,6 +29,7 @@ import argparse
 import json
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from cable_api import DatasetError, load_dataset, resolve_json, solve_to_editor
@@ -101,6 +103,26 @@ def serve():
     return 0
 
 
+def solve_job(job):
+    """(result, seconds) for one (plan, editor JSON) job; never raises."""
+    plan, data = job
+    t = time.perf_counter()
+    try:
+        result = solve_to_editor(plan) if plan is not None else resolve_json(data)
+    except Exception as e:  # one broken plan shouldn't stop a batch
+        pid = plan["id"] if plan is not None else data.get("plan_id")
+        result = {"plan_id": pid, "status": "error", "reason": f"{type(e).__name__}: {e}", "metrics": {}}
+    return result, time.perf_counter() - t
+
+
+def solved(jobs, workers):
+    """solve_job over every job, in order; in parallel when workers > 1."""
+    if workers <= 1 or len(jobs) <= 1:
+        return map(solve_job, jobs)
+    pool = ProcessPoolExecutor(workers)
+    return pool.map(solve_job, jobs, chunksize=1)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file", nargs="?", type=Path)
@@ -112,6 +134,7 @@ def main():
     ap.add_argument("--out", type=Path)
     ap.add_argument("--editor", action="store_true")
     ap.add_argument("--serve", action="store_true")
+    ap.add_argument("--jobs", type=int, default=1)
     args = ap.parse_args()
 
     if args.serve:
@@ -133,39 +156,45 @@ def main():
         print(f"{args.file.name}: {len(plans)} plans, read in {time.perf_counter() - t0:.1f} s")
         jobs = [(p, None) for p in pick(plans, split_of, args)]
 
-    print(f'{"plan":>6} {"status":>10} {"H":>2} {"J":>7} {"naive J":>8} {"L":>7} {"X":>3} {"O":>6} {"B":>4} {"secs":>5}  checks')
+    print(f'{"plan":>6} {"status":>10} {"H":>2} {"J":>7} {"naive H/J":>9} {"greedy":>9} {"C-W":>9} '
+          f'{"L":>7} {"X":>3} {"O":>6} {"B":>4} {"secs":>5}  checks')
     counts = {}
-    for plan, data in jobs:
-        t = time.perf_counter()
-        try:
-            result = solve_to_editor(plan) if plan is not None else resolve_json(data)
-        except Exception as e:  # one broken plan shouldn't stop a batch
-            pid = plan["id"] if plan is not None else data.get("plan_id")
-            result = {"plan_id": pid, "status": "error", "reason": f"{type(e).__name__}: {e}", "metrics": {}}
-        secs = time.perf_counter() - t
+    for result, secs in solved(jobs, args.jobs):
         pid = result["plan_id"]
         status = result["status"]
         counts[status] = counts.get(status, 0) + 1
 
         write(out / "editor" / f"{pid}.json", result)
-        report = {k: result.get(k) for k in ("plan_id", "status", "reason", "warning", "metrics",
-                                             "naive_metrics", "checks")}
+        report = {k: result.get(k) for k in ("plan_id", "status", "reason", "warning", "extended",
+                                             "metrics", "checks")}
+        report["alternatives"] = {k: {f: v.get(f) for f in ("status", "reason", "metrics", "valid")}
+                                  for k, v in (result.get("alternatives") or {}).items()}
         write(out / "report" / f"{pid}.json", report)
         if result.get("submission"):
             write(out / "submission" / f"{pid}.json", result["submission"])
         if args.editor and result.get("rooms"):
             add_to_editor(result)
 
-        if status == "solved":
-            m, n = result["metrics"], result.get("naive_metrics", {})
-            failed = [c["name"] for c in result["checks"] if not c["passed"]]
-            print(f'{pid:>6} {status:>10} {m["H"]:>2} {m["J"]:>7.1f} {n.get("J", float("nan")):>8.1f} '
-                  f'{m["L"]:>7.1f} {m["X"]:>3} {m["O"]:>6.1f} {m["B"]:>4} {secs:>5.1f}  '
-                  + ("ok" if not failed else "FAILED: " + "; ".join(failed)))
-        else:
-            print(f'{pid:>6} {status:>10} {"":>2} {"":>7} {"":>8} {"":>7} {"":>3} {"":>6} {"":>4} {secs:>5.1f}  {result["reason"]}')
+        alts = result.get("alternatives") or {}
 
-    print(f"\n{len(jobs)} plans: " + ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
+        def other(key):
+            """A baseline's hubs/J, e.g. '3/52.1', or '-' if it failed."""
+            m = (alts.get(key) or {}).get("metrics") or {}
+            return f'{m["H"]}/{m["J"]:.1f}' if m and alts[key]["valid"] else "-"
+
+        if status == "solved":
+            m = result["metrics"]
+            failed = [c["name"] for c in result["checks"] if not c["passed"]]
+            print(f'{pid:>6} {status:>10} {m["H"]:>2} {m["J"]:>7.1f} {other("naive"):>9} {other("greedy"):>9} '
+                  f'{other("savings"):>9} {m["L"]:>7.1f} {m["X"]:>3} {m["O"]:>6.1f} {m["B"]:>4} {secs:>5.1f}  '
+                  + ("ok" if not failed else "FAILED: " + "; ".join(failed))
+                  + ("  [extended rules: " + "; ".join(result["extended"]) + "]" if result.get("extended") else ""))
+        else:
+            print(f'{pid:>6} {status:>10} {"":>2} {"":>7} {"":>9} {"":>9} {"":>9} {"":>7} {"":>3} {"":>6} {"":>4} '
+                  f'{secs:>5.1f}  {result["reason"]}')
+
+    print(f"\n{len(jobs)} plans in {time.perf_counter() - t0:.0f} s: "
+          + ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
           + f" -> {out}" + (f" (and {DEST})" if args.editor else ""))
     return 0
 

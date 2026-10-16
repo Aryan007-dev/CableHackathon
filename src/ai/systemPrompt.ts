@@ -1,10 +1,12 @@
 import { serializeScene } from "./serialize";
 import { DescribeCatalog } from "./describeCatalog";
-import { TOOLS } from "./tools";
+import { activeTools } from "./tools";
+import { CABLE_PROMPT, describeCable } from "./describeCable";
 import { useEditor } from "../store";
 
 export function systemPrompt(sceneText?: string) {
-  const toolsList = TOOLS.map((t) => `- ${t.name}: ${t.description}`).join("\n");
+  const cable = describeCable();
+  const toolsList = activeTools().map((t) => `- ${t.name}: ${t.description}`).join("\n");
   const state = useEditor.getState();
   const room = state.doc.room;
 
@@ -608,5 +610,7 @@ CURRENT SCENE
 ==================================================
 
 ${sceneText ?? serializeScene()}
-`;
+${cable ? `${CABLE_PROMPT}
+${cable}
+` : ""}`;
 }

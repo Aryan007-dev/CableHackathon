@@ -17,7 +17,7 @@ import { moveHub } from "./cableActions";
 import { themeColor } from "../themeColor";
 import { formatArea, formatLength } from "../units";
 import type { LengthUnit } from "../units";
-import { frameKey, fromScene, hubOfNode, hubToken, problemsToDraw, ringsToDraw, roomEdges, toScene } from "./cablePlan";
+import { frameKey, fromScene, hubOfNode, hubToken, ringsToDraw, roomEdges, solutionView, toScene } from "./cablePlan";
 import type { CableFloor, CableHeight, CablePlan, CableRoom, CableShape, XY } from "./cablePlan";
 
 const WALL_HEIGHT = 2.7;
@@ -274,8 +274,15 @@ function Screenshot({ name }: { name: string }) {
 }
 
 export default function CablePlan3D() {
-    const plan = useEditor((s) => s.doc.cablePlan);
+    const stored = useEditor((s) => s.doc.cablePlan);
     const layers = useEditor((s) => s.cableLayers);
+    // The solution being shown (ours or a baseline), and one overlaid in grey.
+    const plan = useMemo(() => stored && solutionView(stored, layers.solution), [stored, layers.solution]);
+    const overlay = useMemo(
+        () => (stored && layers.overlay && layers.overlay !== layers.solution ? solutionView(stored, layers.overlay) : null),
+        [stored, layers.overlay, layers.solution]
+    );
+    const draggable = layers.solution === "ours";
     const units = useEditor((s) => s.units);
     const focus = useEditor((s) => s.cableFocus);
     const setFocus = useEditor((s) => s.setCableFocus);
@@ -303,13 +310,14 @@ export default function CablePlan3D() {
         [plan, base]
     );
     const rings = useMemo(
-        () => (plan ? ringsToDraw(plan, layers.compare).map((r) => ({ ...r, path: pathOf(plan, r.points, hubY[r.hub.hub_id]) })) : []),
-        [plan, layers.compare, hubY]
+        // An overlay ring sits at the height of the shown hub with the same id, or the base.
+        () => (plan ? ringsToDraw(plan, overlay).map((r) => ({ ...r, path: pathOf(plan, r.points, hubY[r.hub.hub_id] ?? base) })) : []),
+        [plan, overlay, hubY, base]
     );
-    const overlapPaths = useMemo(() => {
-        const problems = plan && problemsToDraw(plan, layers.compare);
-        return plan && problems ? problems.overlaps.map((seg) => pathOf(plan, seg, base + 0.02)) : [];
-    }, [plan, layers.compare, base]);
+    const overlapPaths = useMemo(
+        () => (plan?.problems ? plan.problems.overlaps.map((seg) => pathOf(plan, seg, base + 0.02)) : []),
+        [plan, base]
+    );
     // Stable between renders, so the door headers aren't rebuilt every frame.
     const doors = useMemo(() => (plan ? [...plan.doors, ...plan.front_doors] : []), [plan]);
     // The building's floor: its outline, or (older files) all its rooms.
@@ -319,7 +327,7 @@ export default function CablePlan3D() {
 
     const wallTop = layers.cutaway ? CUTAWAY_HEIGHT : WALL_HEIGHT;
     const hubOf = hubOfNode(plan);
-    const problems = problemsToDraw(plan, layers.compare);
+    const problems = plan.problems;
     const opacity = (hubId: string | null) => (focus && hubId !== focus ? DIM : 1);
     const pick = (hubId: string | null) => (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
@@ -342,6 +350,10 @@ export default function CablePlan3D() {
             e.stopPropagation();
             const at = floorPoint(e);
             if (busy || !at) return;
+            if (!draggable) {
+                setFocus(hubId !== focus ? hubId : null); // a baseline's hub: inspect only
+                return;
+            }
             (e.target as unknown as Element).setPointerCapture(e.pointerId);
             if (controls) controls.enabled = false;
             setDrag({ hubId, from: at, at });
@@ -364,7 +376,7 @@ export default function CablePlan3D() {
             }
         },
         onPointerOver: () => {
-            document.body.style.cursor = busy ? "wait" : "grab";
+            document.body.style.cursor = busy ? "wait" : draggable ? "grab" : "pointer";
         },
         onPointerOut: () => {
             document.body.style.cursor = "";
@@ -438,10 +450,9 @@ export default function CablePlan3D() {
 
             {layers.cables && (
                 <>
-                    {rings.map(({ hub, path, naive }) => {
-                        const faint = naive && layers.compare === "both";
+                    {rings.map(({ hub, path, faint }) => {
                         return (
-                            <group key={`${hub.hub_id}-${naive ? "naive" : "final"}`}>
+                            <group key={`${hub.hub_id}-${faint ? "overlay" : "shown"}`}>
                                 <Tube
                                     path={path}
                                     radius={faint ? CABLE_RADIUS * 0.6 : CABLE_RADIUS}

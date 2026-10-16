@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { sendMessage, type ChatMessage } from "./ai/chat";
 import { geminiLimiter } from "./rateLimiter";
+import { useEditor } from "./store";
 import "./chat.css";
 
 
@@ -12,6 +13,7 @@ export default function ChatPanel() {
   const [rateLimitWaitTime, setRateLimitWaitTime] = useState(0);
   const [isOpen, setIsOpen] = useState(false)
   const toggleOpen = () => setIsOpen(!isOpen)
+  const hasCablePlan = useEditor((s) => s.doc.cablePlan != null)
 
   const send = async () => {
     const userText = text.trim();
@@ -87,7 +89,7 @@ export default function ChatPanel() {
           <div className="chat-input">
             <input
               value={text}
-              placeholder="e.g. Add a sofa at [2,0,1]"
+              placeholder={hasCablePlan ? "e.g. Why does this plan need these hubs?" : "e.g. Add a sofa at [2,0,1]"}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") send();

@@ -117,9 +117,8 @@ def eligible_rooms(G, scale):
 def place_devices(rooms, plan):
     """Room id -> node Point, at the spot deepest inside the room.
 
-    STAND-IN: the organisers supply the real node points (one per room,
-    0.5 m from walls) in each plan's input file. Until we have that format,
-    we place our own the same way: as far from the walls as possible.
+    The organisers don't supply node points; teams place them. Ours go as
+    far from the walls as possible (io_format then snaps them to the grid).
     Some plans draw wall pieces overlapping a room, so walls are cut out of
     the room first; otherwise a node can land inside a wall.
     """

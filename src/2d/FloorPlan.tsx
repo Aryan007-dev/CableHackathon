@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useEditor, OPENING_DEFAULTS } from "../store";
 import type { PlanWall } from "../store";
@@ -32,7 +32,7 @@ import {
 } from "./planSelection";
 import type { PlanItem, PlanSnapshot } from "./planSelection";
 import { usePanZoom } from "./usePanZoom";
-import { frameKey, toPlan } from "../cable/cablePlan";
+import { frameKey, solutionView, toPlan } from "../cable/cablePlan";
 
 // The cable panel's width plus its gap (src/cable/CablePanel.module.css).
 const CABLE_PANEL_WIDTH = 312;
@@ -74,6 +74,13 @@ function FloorPlan() {
     const grid = PLAN_GRID[units];
     const cablePlan = useEditor((s) => s.doc.cablePlan);
     const cableLayers = useEditor((s) => s.cableLayers);
+    // The solution being shown (ours or a baseline), and one to overlay under it.
+    const { solution, overlay } = cableLayers;
+    const cableView = useMemo(() => cablePlan && solutionView(cablePlan, solution), [cablePlan, solution]);
+    const cableOverlay = useMemo(
+        () => (cablePlan && overlay && overlay !== solution ? solutionView(cablePlan, overlay) : null),
+        [cablePlan, overlay, solution]
+    );
 
     const { svgRef, scale, pan, isPanning, spaceHeld, zoomAtCenter, fitTo, toWorld, startPan, updatePan, endPan } = usePanZoom();
 
@@ -620,7 +627,7 @@ function FloorPlan() {
                     <g transform={`translate(${pan[0]} ${pan[1]}) scale(${scale})`}>
                         <GridLayer minor={grid.minor} major={grid.major} />
 
-                        {cablePlan && <CableRoomsLayer plan={cablePlan} layers={cableLayers} />}
+                        {cableView && <CableRoomsLayer plan={cableView} layers={cableLayers} />}
 
                         <WallsLayer floors={displayedRectangles} points={points} closeOutline={!!polylineRectangle} walls={walls} />
 
@@ -672,8 +679,15 @@ function FloorPlan() {
                             showArea={!(cablePlan?.source?.kind === "drawn" && cableLayers.labels)}
                         />
 
-                        {cablePlan && (
-                            <CableOverlayLayer plan={cablePlan} layers={cableLayers} units={units} interactive={activeTool === "select"} />
+                        {cableView && (
+                            <CableOverlayLayer
+                                plan={cableView}
+                                overlay={cableOverlay}
+                                layers={cableLayers}
+                                units={units}
+                                interactive={activeTool === "select"}
+                                draggable={solution === "ours"}
+                            />
                         )}
 
                         <FurnitureLayer

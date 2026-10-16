@@ -206,12 +206,12 @@ def descend(ctx, zoning, current):
 def choose(ctx):
     """The best design: fewest hubs, then lowest routed J. Returns
     ((metrics, submission), zones, picked options)."""
-    partitions = best_partitions(ctx.rooms, candidate_territories(ctx.G, ctx.rooms, ctx.hub_rooms),
-                                 limit=MAX_PARTITIONS)
+    candidates = candidate_territories(ctx.G, ctx.rooms, ctx.hub_rooms)
+    partitions = best_partitions(ctx.rooms, candidates, limit=MAX_PARTITIONS)
     if not partitions:
         give_up(ctx, "no zoning meets the capacity and connection rules")
 
-    cache = {}  # zone -> plan_loop options (zones repeat across zonings)
+    cache = ctx.options = {}  # zone -> plan_loop options (zones repeat across zonings); kept for explain.py
 
     def options_for(zone):
         if zone not in cache:
@@ -229,6 +229,11 @@ def choose(ctx):
     if not ranked:
         give_up(ctx, "no hub position reaches every node of a zone")
     ranked.sort(key=lambda r: r[0])
+    # What explain.py tells the user about this choice. ranked[0] is the
+    # cheapest zoning by distance cost: no design on the grid with these
+    # hubs can cost less (if every tied zoning was listed).
+    ctx.trace = {"candidates": candidates, "zonings": len(ranked), "complete": len(partitions) < MAX_PARTITIONS,
+                 "routed": min(TRY_ZONINGS, len(ranked)), "lower_bound": ranked[0][0][0], "fixed": False}
 
     # Distance cost can't see bends at nodes or crossings, so the final
     # choices are made by ROUTED J:
@@ -251,6 +256,7 @@ def solve_with_hubs(ctx, zones, hub_points):
     hub_points: one (x, y) in metres per zone; each is moved to the nearest
     cell where a hub may stand inside its zone. Returns the same as choose()."""
     zoning = []
+    ctx.options, ctx.trace = {}, {"fixed": True}
     for zone, (x, y) in zip(zones, hub_points):
         mask = np.zeros_like(ctx.grid.free)
         for room_id in zone:
@@ -265,6 +271,7 @@ def solve_with_hubs(ctx, zones, hub_points):
         opts = plan_loop(ctx.grid, ctx.G, zone, ctx.cells, ctx.fields, only, options=ORDER_OPTIONS)
         if not opts:
             give_up(ctx, "a node can't be reached from the hub's new spot")
+        ctx.options[zone] = opts
         zoning.append((zone, opts))
     current = design(ctx, zones, [o[0] for _, o in zoning])
     if current is None:

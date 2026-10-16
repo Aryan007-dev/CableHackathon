@@ -3,8 +3,9 @@ import { AlertCircle, Check, ChevronDown, ChevronUp, Download, Loader2, X } from
 
 import { useEditor } from "../store";
 import { downloadJson, exportPdf, exportPng, exportSvg } from "./exportPlan";
-import { hubVar } from "./cablePlan";
-import type { CableCompare, CableFloor, CableHeight, CableLayers, CableMetrics } from "./cablePlan";
+import { alternativesOf, hubVar, SOLUTION_LABELS, solutionView } from "./cablePlan";
+import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, SolutionId } from "./cablePlan";
+import CableStory from "./CableStory";
 import styles from "./CablePanel.module.css";
 
 const ICON = { size: 16, strokeWidth: 1.75 } as const;
@@ -21,7 +22,51 @@ const METRICS: { key: keyof CableMetrics; label: string; title: string; digits: 
 
 const fmt = (v: number | undefined, digits: number) => (v == null ? "–" : v.toFixed(digits));
 
-// The on/off layers (compare and height are choices, not switches).
+// The deck's ranking: fewer hubs first, then lower J.
+const ranksAbove = (a: CableMetrics, b: CableMetrics) =>
+    (a.H ?? Infinity) < (b.H ?? Infinity) || ((a.H ?? Infinity) === (b.H ?? Infinity) && (a.J ?? Infinity) < (b.J ?? Infinity) - 1e-6);
+
+type Column = { id: SolutionId; label: string; metrics: CableMetrics; valid: boolean; reason: string | null };
+
+// Ours and every way we compare it with, as table columns.
+function columnsOf(plan: CablePlan): Column[] {
+    const ours: Column = {
+        id: "ours",
+        label: SOLUTION_LABELS.ours,
+        metrics: plan.metrics,
+        valid: plan.status !== undefined ? plan.status === "solved" && (plan.checks ?? []).every((c) => c.passed) : plan.hubs.length > 0,
+        reason: plan.reason ?? null,
+    };
+    const others = Object.entries(alternativesOf(plan)).map(([id, alt]) => ({
+        id: id as SolutionId,
+        label: SOLUTION_LABELS[id as SolutionId] ?? alt.label,
+        metrics: alt.metrics,
+        valid: alt.status === "solved" && alt.valid,
+        reason: alt.reason,
+    }));
+    return [ours, ...others];
+}
+
+// One sentence: who wins under the deck's ranking, and by how much.
+function verdict(columns: Column[]): string | null {
+    const [ours, ...others] = columns;
+    if (!ours.valid || others.length === 0) return null;
+    const beat = others.filter((c) => c.valid && ranksAbove(c.metrics, ours.metrics));
+    if (beat.length > 0) {
+        const best = beat.reduce((a, b) => (ranksAbove(b.metrics, a.metrics) ? b : a));
+        return `${best.label} beats ours on this plan (${best.metrics.H} hubs, J ${best.metrics.J?.toFixed(1)} vs ${ours.metrics.H}, ${ours.metrics.J?.toFixed(1)}).`;
+    }
+    const parts = others.map((c) => {
+        if (!c.valid) return `${c.label} found no valid design`;
+        if ((c.metrics.H ?? 0) > (ours.metrics.H ?? 0)) return `${c.label} needs ${c.metrics.H} hubs`;
+        const j = c.metrics.J ?? 0;
+        const saved = j > 0 ? ((j - (ours.metrics.J ?? 0)) / j) * 100 : 0;
+        return saved > 0.05 ? `${saved.toFixed(0)}% less J than ${c.label}` : `ties ${c.label}`;
+    });
+    return `Ours ranks first: ${parts.join(", ")}.`;
+}
+
+// The on/off layers (solution, overlay, height and floor are choices, not switches).
 type Switch = { [K in keyof CableLayers]: CableLayers[K] extends boolean ? K : never }[keyof CableLayers];
 
 // Floating panel for the imported cable plan: what it costs, how it's drawn,
@@ -44,9 +89,12 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
     const name = plan ? (plan.source?.kind === "drawn" ? "drawn-plan" : `plan-${plan.plan_id}`) : "plan";
     const title = plan ? (plan.source?.kind === "drawn" ? "Drawn plan" : `Plan ${plan.plan_id}`) : "Cable plan";
     const failed = plan?.checks?.filter((c) => !c.passed) ?? [];
-    const m = plan?.metrics ?? {};
-    const naive = plan?.naive_metrics;
-    const hasNaive = !!plan?.hubs.some((h) => h.naive_ring);
+    // The solution on screen (ours or a baseline) and the comparison table.
+    const shown = plan ? solutionView(plan, layers.solution) : null;
+    const m = shown?.metrics ?? {};
+    const columns = plan ? columnsOf(plan) : [];
+    const best = (key: keyof CableMetrics) =>
+        Math.min(...columns.filter((c) => c.valid && c.metrics[key] != null).map((c) => c.metrics[key] as number));
 
     const toggle = (layer: Switch, label: string, title: string) => (
         <button
@@ -97,27 +145,94 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                     {plan.warning && <p className={styles.note}>{plan.warning}</p>}
                     {plan.notice && <p className={styles.notice}>{plan.notice}</p>}
 
-                    {/* What it costs, and the naive routing's numbers to compare. */}
-                    {plan.hubs.length > 0 && (
+                    {plan.extended && plan.extended.length > 0 && (
+                        <p className={styles.notice} title="The deck can't serve a room over 100 m²; the organisers leave such plans out">
+                            Extended rules: {plan.extended.join("; ")}. Outside the deck's rules (adds nodes).
+                        </p>
+                    )}
+
+                    {/* What the solution on screen costs. */}
+                    {shown && shown.hubs.length > 0 && (
                         <div className={styles.metrics}>
                             {METRICS.map(({ key, label, title, digits }) => (
                                 <div key={key} className={styles.metric} title={title}>
                                     <span className={styles.metricValue}>{fmt(m[key], digits)}</span>
                                     <span className={styles.metricLabel}>{label}</span>
-                                    {naive && key !== "H" && (
-                                        <span className={styles.metricNaive} title="Each leg routed on its own (before step 7)">
-                                            {fmt(naive[key], digits)}
-                                        </span>
-                                    )}
                                 </div>
                             ))}
                         </div>
                     )}
-                    {naive?.J != null && m.J != null && naive.J > 0 && (
-                        <p className={styles.note}>
-                            Grey numbers: each leg routed on its own. Routing the rings together saves{" "}
-                            <strong>{(((naive.J - m.J) / naive.J) * 100).toFixed(0)}%</strong> of J.
-                        </p>
+                    {layers.solution !== "ours" && shown?.reason && <p className={styles.note}>{shown.reason}</p>}
+
+                    {/* Ours against the baselines, judged the same way. */}
+                    {columns.length > 1 && (
+                        <div className={styles.section}>
+                            <div className={styles.sectionHead}>
+                                <span>Compare</span>
+                            </div>
+                            <table className={styles.compare}>
+                                <thead>
+                                    <tr>
+                                        <th />
+                                        {columns.map((c) => (
+                                            <th key={c.id}>
+                                                <button type="button" className={styles.colBtn} data-active={layers.solution === c.id}
+                                                    title={`Show ${c.label}`} onClick={() => setLayer("solution", c.id)}>
+                                                    {c.label}
+                                                </button>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {METRICS.map(({ key, label, title, digits }) => (
+                                        <tr key={key}>
+                                            <th title={title}>{label}</th>
+                                            {columns.map((c) => (
+                                                <td key={c.id} data-best={c.valid && c.metrics[key] != null && Math.abs((c.metrics[key] as number) - best(key)) < 1e-6}>
+                                                    {c.valid ? fmt(c.metrics[key], digits) : "–"}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    <tr>
+                                        <th>Valid</th>
+                                        {columns.map((c) => (
+                                            <td key={c.id} title={c.reason ?? undefined}>{c.valid ? "✓" : "✗"}</td>
+                                        ))}
+                                    </tr>
+                                </tbody>
+                            </table>
+                            {verdict(columns) && <p className={styles.note}>{verdict(columns)}</p>}
+                            <div className={styles.row}>
+                                <label className={styles.field}>
+                                    Show
+                                    <select value={layers.solution} onChange={(e) => setLayer("solution", e.target.value as SolutionId)}>
+                                        {columns.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                    </select>
+                                </label>
+                                <label className={styles.field}>
+                                    Overlay
+                                    <select value={layers.overlay ?? ""} onChange={(e) => setLayer("overlay", (e.target.value || null) as SolutionId | null)}>
+                                        <option value="">None</option>
+                                        {columns.filter((c) => c.id !== layers.solution).map((c) => (
+                                            <option key={c.id} value={c.id}>{c.label}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Why ours looks the way it does (the solver's own reasons). */}
+                    {layers.solution === "ours" && plan.explain && plan.explain.summary.length > 0 && (
+                        <details className={styles.section} open>
+                            <summary>Why this design</summary>
+                            <ul className={styles.why}>
+                                {plan.explain.summary.map((line, i) => <li key={i}>{line}</li>)}
+                            </ul>
+                            <p className={styles.hint}>Click a hub or a ring below for its own reasons.</p>
+                        </details>
                     )}
 
                     {/* How it's drawn. */}
@@ -130,18 +245,9 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                             {toggle("problems", "Problems", "Crossings and overlapping cable, in red")}
                             {toggle("animate", "Animate", "A pulse running round each ring, hub first")}
                             {view === "3d" && toggle("cutaway", "Cutaway", "Low walls, so the cables stay in view")}
+                            {plan.hubs.length > 0 && <CableStory plan={plan} />}
                         </div>
                         <div className={styles.row}>
-                            {hasNaive && (
-                                <label className={styles.field}>
-                                    Routing
-                                    <select value={layers.compare} onChange={(e) => setLayer("compare", e.target.value as CableCompare)}>
-                                        <option value="final">Final</option>
-                                        <option value="naive">Naive (each leg alone)</option>
-                                        <option value="both">Both</option>
-                                    </select>
-                                </label>
-                            )}
                             {view === "3d" && (
                                 <label className={styles.field}>
                                     Floor
@@ -165,8 +271,8 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                         </div>
                     </div>
 
-                    {/* One row per hub: click to inspect its ring. */}
-                    {plan.hubs.length > 0 && (
+                    {/* One row per hub of the solution on screen: click to inspect its ring. */}
+                    {shown && shown.hubs.length > 0 && (
                         <div className={styles.section}>
                             <div className={styles.sectionHead}>
                                 <span>Rings</span>
@@ -175,7 +281,7 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                                 )}
                             </div>
                             <ul className={styles.hubs}>
-                                {plan.hubs.map((h) => (
+                                {shown.hubs.map((h) => (
                                     <li key={h.hub_id}>
                                         <button type="button" className={styles.hub} data-active={focus === h.hub_id}
                                             onClick={() => setFocus(focus === h.hub_id ? null : h.hub_id)}>
@@ -185,17 +291,21 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                                                 {h.sequence.length - 2} node{h.sequence.length === 3 ? "" : "s"} · {h.ring_length_m.toFixed(1)} m
                                             </span>
                                         </button>
-                                        {focus === h.hub_id && (
+                                        {focus === h.hub_id && (layers.solution === "ours" && plan.explain?.hubs[h.hub_id] ? (
+                                            <ul className={`${styles.why} ${styles.sequence}`}>
+                                                {plan.explain.hubs[h.hub_id].map((line, i) => <li key={i}>{line}</li>)}
+                                            </ul>
+                                        ) : (
                                             <p className={styles.sequence}>
                                                 {h.sequence.join(" → ")}
                                                 <br />
                                                 Rooms {(h.assigned_rooms ?? []).join(", ")} · hub in {h.room_id}
                                             </p>
-                                        )}
+                                        ))}
                                     </li>
                                 ))}
                             </ul>
-                            {plan.submission != null && (
+                            {plan.submission != null && layers.solution === "ours" && (
                                 <p className={styles.hint}>
                                     Drag a hub to move it ({view === "2d" ? "Select tool" : "drag its cabinet"}); the rings are
                                     re-routed. A hub can only stand in the rooms it serves, which light up while you drag.

@@ -44,7 +44,7 @@ export interface CableHub {
     sequence: string[]; // ["H1", "N2", "N1", "H1"]
     ring_length_m: number;
     ring: XY[]; // the whole closed cable route, hub to hub
-    naive_ring?: XY[]; // the same stops, each leg routed on its own (before step 7)
+    naive_ring?: XY[]; // older files only: the naive routing (now in `alternatives`)
 }
 
 export interface CableMetrics {
@@ -95,10 +95,45 @@ export interface CablePlan {
     notice?: string | null; // e.g. why a dragged hub didn't stay where it was dropped
     checks?: CableCheck[];
     problems?: CableProblems;
-    naive_metrics?: CableMetrics;
-    naive_problems?: CableProblems;
+    naive_metrics?: CableMetrics; // older files only
+    naive_problems?: CableProblems; // older files only
     submission?: unknown; // the slide-8 file, as the organisers want it
     source?: { kind: "dataset" | "drawn" };
+    // The same plan solved other ways, to compare with ours (solver/baselines.py).
+    alternatives?: Partial<Record<Baseline, CableAlternative>>;
+    // Set when a room over 100 m² was split for two hubs: outside the deck's rules.
+    extended?: string[];
+    // Why ours looks the way it does, from the solver's own numbers (solver/explain.py).
+    explain?: CableExplain;
+}
+
+export interface CableExplain {
+    summary: string[]; // why this many hubs, how the zoning was picked, the cost and its lower bound
+    hubs: Record<string, string[]>; // per hub: its rooms, its spot, its order, its ring
+    hub_count?: { H: number; by_area: number; by_nodes: number; alone: { room: string; why: string }[] };
+    // No design with the same hubs costs less than J on the solver's grid.
+    lower_bound?: { J: number; gap_pct: number; complete: boolean };
+}
+
+// Ours, and the ways we compare it with: our zones and orders with each leg
+// routed alone, a greedy method, and Clarke–Wright savings.
+export type Baseline = "naive" | "greedy" | "savings";
+export type SolutionId = "ours" | Baseline;
+export const SOLUTION_LABELS: Record<SolutionId, string> = {
+    ours: "Ours",
+    naive: "Naive routing",
+    greedy: "Greedy",
+    savings: "Clarke–Wright",
+};
+
+export interface CableAlternative {
+    label: string;
+    status: string;
+    reason: string | null;
+    metrics: CableMetrics;
+    valid: boolean;
+    hubs: CableHub[];
+    problems?: CableProblems;
 }
 
 // One entry of public/cable-plans/index.json.
@@ -109,7 +144,6 @@ export interface CablePlanSummary {
     J: number | null;
 }
 
-export type CableCompare = "final" | "naive" | "both";
 export type CableHeight = "floor" | "skirting" | "ceiling";
 export type CableFloor = "zones" | "wood" | "tiles";
 
@@ -121,7 +155,8 @@ export interface CableLayers {
     cutaway: boolean; // 3D: low walls so the cables show
     animate: boolean; // a pulse running round each ring, hub first
     problems: boolean; // crossings and overlaps in red
-    compare: CableCompare; // the final routing, the naive one, or both
+    solution: SolutionId; // which solution is drawn
+    overlay: SolutionId | null; // another one's rings, dashed grey underneath
     height: CableHeight; // 3D: where the cable runs
     floor: CableFloor; // 3D: floor finish (zones = tinted by hub)
     dimensions: boolean; // each room's wall lengths
@@ -134,7 +169,8 @@ export const DEFAULT_LAYERS: CableLayers = {
     cutaway: true,
     animate: false,
     problems: true,
-    compare: "final",
+    solution: "ours",
+    overlay: null,
     height: "floor",
     floor: "wood",
     dimensions: true,
@@ -198,19 +234,50 @@ export function hubOfNode(plan: CablePlan): Record<string, string> {
     return out;
 }
 
-// The rings to draw for the compare setting: [hub, points, which].
-export function ringsToDraw(plan: CablePlan, compare: CableCompare) {
-    const out: { hub: CableHub; points: XY[]; naive: boolean }[] = [];
-    for (const h of plan.hubs) {
-        if (compare !== "final" && h.naive_ring) out.push({ hub: h, points: h.naive_ring, naive: true });
-        if (compare !== "naive" || !h.naive_ring) out.push({ hub: h, points: h.ring, naive: false });
-    }
-    return out;
+// Every way this plan was solved, ours excluded. Older files kept only the
+// naive rings (per hub), which become a naive alternative here.
+export function alternativesOf(plan: CablePlan): Partial<Record<Baseline, CableAlternative>> {
+    if (plan.alternatives) return plan.alternatives;
+    if (!plan.hubs.some((h) => h.naive_ring)) return {};
+    return {
+        naive: {
+            label: SOLUTION_LABELS.naive,
+            status: "solved",
+            reason: null,
+            metrics: plan.naive_metrics ?? {},
+            valid: true,
+            hubs: plan.hubs.map((h) => ({ ...h, ring: h.naive_ring ?? h.ring })),
+            problems: plan.naive_problems,
+        },
+    };
 }
 
-// The problem markers that go with what's drawn.
-export const problemsToDraw = (plan: CablePlan, compare: CableCompare) =>
-    compare === "naive" ? plan.naive_problems ?? plan.problems : plan.problems;
+// The plan as one solution draws it: its hubs, rings, metrics and problems,
+// and each room tinted by the hub that serves it there. The 2D and 3D views
+// draw whatever this returns, so every solution looks the same way.
+export function solutionView(plan: CablePlan, id: SolutionId): CablePlan {
+    const alt = id === "ours" ? null : alternativesOf(plan)[id];
+    if (!alt) return plan;
+    const hubOfRoom = new Map(alt.hubs.flatMap((h) => (h.assigned_rooms ?? []).map((r) => [r, h.hub_id] as const)));
+    return {
+        ...plan,
+        hubs: alt.hubs,
+        rooms: plan.rooms.map((r) => (r.room_id ? { ...r, hub_id: hubOfRoom.get(r.room_id) ?? null } : r)),
+        metrics: alt.metrics,
+        problems: alt.problems,
+        status: alt.status === "solved" ? "solved" : "failed",
+        reason: alt.reason,
+        checks: undefined,
+    };
+}
+
+// The rings to draw: the overlay's (faint) under the shown solution's.
+export function ringsToDraw(view: CablePlan, overlay: CablePlan | null) {
+    return [
+        ...(overlay ? overlay.hubs.map((hub) => ({ hub, points: hub.ring, faint: true })) : []),
+        ...view.hubs.map((hub) => ({ hub, points: hub.ring, faint: false })),
+    ];
+}
 
 // A loaded file must at least have these, or nothing can be drawn.
 export function isCablePlan(data: unknown): data is CablePlan {
