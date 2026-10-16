@@ -4,7 +4,7 @@ import { AlertCircle, Check, ChevronDown, ChevronUp, Download, Loader2, X } from
 import { useEditor } from "../store";
 import { downloadJson, exportPdf, exportPng, exportSvg } from "./exportPlan";
 import { alternativesOf, hubVar, SOLUTION_LABELS, solutionView } from "./cablePlan";
-import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, SolutionId } from "./cablePlan";
+import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, CableWallFinish, SolutionId } from "./cablePlan";
 import CableStory from "./CableStory";
 import styles from "./CablePanel.module.css";
 
@@ -255,6 +255,18 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                                         <option value="wood">Wood</option>
                                         <option value="tiles">Tiles</option>
                                         <option value="zones">Zone colours</option>
+                                    </select>
+                                </label>
+                            )}
+                            {view === "3d" && (
+                                <label className={styles.field}>
+                                    Wall
+                                    <select value={layers.wallFinish} onChange={(e) => setLayer("wallFinish", e.target.value as CableWallFinish)}>
+                                        <option value="plain">Plain</option>
+                                        <option value="cladding">Brick cladding</option>
+                                        <option value="beige">Warm plaster</option>
+                                        <option value="concrete">Concrete</option>
+                                        <option value="painted">Weathered plaster</option>
                                     </select>
                                 </label>
                             )}

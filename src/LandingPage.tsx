@@ -1,4 +1,5 @@
 import { ArrowRight, Box, CircleDot, MoveUpRight, Square } from "lucide-react";
+import HeroBlueprint from "./HeroBlueprint";
 import LandingStory from "./LandingStory";
 import "./LandingPage.css";
 
@@ -36,7 +37,10 @@ export default function LandingPage({ onOpenEditor }: Props) {
             <div className="landing-proof"><CircleDot size={17} /><span>Routes shaped by rooms, walls, and constraints.</span></div>
           </div>
 
-          <div className="landing-preview" id="plan-preview" aria-label="2D and 3D plan preview spaces">
+          <HeroBlueprint />
+        </section>
+
+        <section className="landing-preview" id="plan-preview" aria-label="2D and 3D plan preview spaces">
             <div className="landing-preview-top">
               <div className="landing-preview-title"><span className="landing-preview-status" /> <span>PLAN VIEWS</span><span className="landing-preview-separator">/</span><span>2D + 3D</span></div>
               <span className="landing-preview-caption">ONE ROUTE · TWO PERSPECTIVES</span>
@@ -61,7 +65,6 @@ export default function LandingPage({ onOpenEditor }: Props) {
               <span><span className="landing-bottom-dot landing-bottom-dot-3d" /> See it in space</span>
               <span className="landing-preview-ready">TWO VIEWS / ONE PLAN</span>
             </div>
-          </div>
         </section>
         <div className="landing-footnote"><span>01 / PLAN</span><span>02 / ROUTE</span><span>03 / VALIDATE</span><span className="landing-footnote-end">One plan. Two ways to see the network.</span></div>
         <LandingStory onOpenEditor={onOpenEditor} />

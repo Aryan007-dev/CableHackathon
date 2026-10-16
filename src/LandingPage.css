@@ -164,6 +164,8 @@
 .landing-proof svg { color: #4f6b55; }
 
 .landing-preview {
+  width: min(100% - 92px, 1510px);
+  margin: 0 auto 27px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid #ced6ca;
@@ -176,7 +178,7 @@
 .landing-preview-status { width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #79a77b; box-shadow: 0 0 0 3px #e7eee4; }
 .landing-preview-separator { color: #a7b2a7; }
 .landing-preview-caption { color: #7f8d80; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
-.landing-preview-stage { position: relative; height: clamp(350px, 36vw, 492px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 22px; overflow: hidden; background: #edf1ea; }
+.landing-preview-stage { position: relative; height: clamp(290px, 28vw, 390px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 22px; overflow: hidden; background: #edf1ea; }
 .landing-preview-stage::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(#bac6b7 1px, transparent 1px), linear-gradient(90deg, #bac6b7 1px, transparent 1px); background-size: 26px 26px; opacity: .26; pointer-events: none; }
 .landing-preview-slot { position: relative; z-index: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #adbeb0; border-radius: 5px; background: rgba(253, 252, 248, .78); text-align: center; }
 .landing-preview-slot-3d { background: rgba(224, 233, 225, .72); }
@@ -198,12 +200,13 @@
 @media (max-width: 1080px) {
   .landing-hero { grid-template-columns: 1fr; gap: 50px; max-width: 780px; padding-top: 74px; }
   .landing-intro h1 { font-size: clamp(63px, 9vw, 90px); }
-  .landing-preview-stage { height: 480px; }
+  .landing-preview { max-width: 780px; }
+  .landing-preview-stage { height: 330px; }
   .landing-proof { margin-top: 32px; }
   .landing-footnote { max-width: 780px; }
 }
 @media (max-width: 650px) {
-  .landing-nav, .landing-hero, .landing-footnote { width: min(100% - 36px, 560px); }
+  .landing-nav, .landing-hero, .landing-footnote, .landing-preview { width: min(100% - 36px, 560px); }
   .landing-nav { height: 72px; }
   .landing-brand { font-size: 21px; }
   .landing-nav-note { display: none; }
