@@ -83,16 +83,7 @@
   text-decoration: none;
 }
 .landing-brand-dot { color: #d1495b; margin-left: -10px; }
-.landing-brand-mark {
-  width: 25px;
-  height: 25px;
-  border: 2px solid #1f2a24;
-  border-radius: 7px;
-  transform: rotate(-15deg);
-  display: grid;
-  place-items: center;
-}
-.landing-brand-mark span { width: 7px; height: 7px; border-radius: 50%; background: #d1495b; }
+.landing-brand-image { display: block; width: 36px; height: 36px; object-fit: contain; }
 .landing-nav-note { margin-left: 12px; color: #6f7b71; font-size: 13px; letter-spacing: .025em; }
 .landing-nav-link {
   display: inline-flex;

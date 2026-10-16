@@ -17,7 +17,7 @@ export default function LandingPage({ onOpenEditor }: Props) {
       </svg>
 
       <header className="landing-nav">
-        <a className="landing-brand" href="/" aria-label="GridMind home"><span className="landing-brand-mark"><span /></span> GridMind<span className="landing-brand-dot">.</span></a>
+        <a className="landing-brand" href="/" aria-label="GridMind home"><img src={`${import.meta.env.BASE_URL}gridmind-icon.png`} alt="" className="landing-brand-image" /> GridMind<span className="landing-brand-dot">.</span></a>
         <span className="landing-nav-note">Cable routing, made visible</span>
         <button className="landing-nav-link" onClick={onOpenEditor}>Open editor <MoveUpRight size={16} /></button>
       </header>

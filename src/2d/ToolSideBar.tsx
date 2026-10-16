@@ -1,3 +1,6 @@
+
+import "./ToolSideBar.css";
+
 export type Tool =
     | "select"
     | "pan"
@@ -12,7 +15,6 @@ export type Tool =
 type ToolSideBarProps = {
     activeTool: Tool;
     onToolChange: (tool: Tool) => void;
-    // The furniture library is a panel, not a tool: highlight it while it's open.
     libraryOpen?: boolean;
 };
 
@@ -55,99 +57,72 @@ export default function ToolSideBar({
     onToolChange,
     libraryOpen = false,
 }: ToolSideBarProps) {
-    return (
-        <aside
-            style={{
-                width: 280,
-                height: "100%",
-                padding: 16,
-                background: "var(--color-surface)",
-                borderRight: "1px solid var(--color-border)",
-                color: "var(--color-ink)",
-                boxSizing: "border-box",
-            }}
-        >
-            {/* Navigation tools */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-                <button
-                    onClick={() => onToolChange("select")}
-                    style={{
-                        flex: 1,
-                        padding: 10,
-                        background:
-                            activeTool === "select" ? "var(--color-accent)" : "var(--color-surface)",
-                        color:
-                            activeTool === "select" ? "var(--color-accent-contrast)" : "var(--color-ink)",
-                        border: "1px solid var(--color-border-strong)",
-                        borderRadius: 8,
-                    }}
-                >
-                    Select <kbd>V</kbd>
-                </button>
+    const navigationTools = [
+        { id: "select" as const, label: "Select", shortcut: "V" },
+        { id: "pan" as const, label: "Pan", shortcut: "H" },
+    ];
 
-                <button
-                    onClick={() => onToolChange("pan")}
-                    style={{
-                        flex: 1,
-                        padding: 10,
-                        background:
-                            activeTool === "pan" ? "var(--color-accent)" : "var(--color-surface)",
-                        color:
-                            activeTool === "pan" ? "var(--color-accent-contrast)" : "var(--color-ink)",
-                        border: "1px solid var(--color-border-strong)",
-                        borderRadius: 8,
-                    }}
-                >
-                    Pan <kbd>H</kbd>
-                </button>
+    return (
+        <aside className="tool-sidebar" aria-label="Floor plan tools">
+            <div className="tool-sidebar__navigation">
+                {navigationTools.map((tool) => {
+                    const selected = activeTool === tool.id;
+
+                    return (
+                        <button
+                            key={tool.id}
+                            type="button"
+                            className="tool-sidebar__mode"
+                            data-active={selected}
+                            aria-pressed={selected}
+                            onClick={() => onToolChange(tool.id)}
+                        >
+                            <span>{tool.label}</span>
+                            <kbd>{tool.shortcut}</kbd>
+                        </button>
+                    );
+                })}
             </div>
 
-            {/* Tool sections */}
-            {sections.map((section) => (
-                <section key={section.title} style={{ marginBottom: 24 }}>
-                    <h3
-                        style={{
-                            margin: "0 0 8px",
-                            fontSize: 13,
-                            color: "var(--color-ink-muted)",
-                            letterSpacing: 0.5,
-                        }}
+            <div className="tool-sidebar__sections">
+                {sections.map((section) => (
+                    <section
+                        className="tool-sidebar__section"
+                        key={section.title}
                     >
-                        {section.number} {section.title}
-                    </h3>
+                        <h3 className="tool-sidebar__heading">
+                            <span className="tool-sidebar__number">
+                                {section.number}
+                            </span>
+                            <span>{section.title}</span>
+                        </h3>
 
-                    {section.tools.map((tool) => {
-                        const selected = activeTool === tool.id || (tool.id === "furniture" && libraryOpen);
+                        <div className="tool-sidebar__items">
+                            {section.tools.map((tool) => {
+                                const selected =
+                                    activeTool === tool.id ||
+                                    (tool.id === "furniture" && libraryOpen);
 
-                        return (
-                            <button
-                                key={tool.id}
-                                onClick={() => onToolChange(tool.id)}
-                                style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    width: "100%",
-                                    padding: "12px 10px",
-                                    marginBottom: 4,
-                                    border: "none",
-                                    borderRadius: 8,
-                                    background: selected
-                                        ? "var(--color-accent)"
-                                        : "transparent",
-                                    color: selected
-                                        ? "var(--color-accent-contrast)"
-                                        : "var(--color-ink)",
-                                    textAlign: "left",
-                                    cursor: "pointer",
-                                }}
-                            >
-                                <span>{tool.label}</span>
-                                <kbd>{tool.shortcut}</kbd>
-                            </button>
-                        );
-                    })}
-                </section>
-            ))}
+                                return (
+                                    <button
+                                        key={tool.id}
+                                        type="button"
+                                        className="tool-sidebar__item"
+                                        data-active={selected}
+                                        aria-pressed={selected}
+                                        onClick={() => onToolChange(tool.id)}
+                                    >
+                                        <span className="tool-sidebar__label">
+                                            {tool.label}
+                                        </span>
+                                        <kbd>{tool.shortcut}</kbd>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ))}
+            </div>
         </aside>
     );
 }

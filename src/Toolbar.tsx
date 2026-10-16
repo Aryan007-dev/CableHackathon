@@ -79,7 +79,10 @@ function Toolbar({ view, onViewChange, onHome }: ToolbarProps) {
     <header className={styles.bar}>
       {/* LEFT: brand + plan title */}
       <div className={styles.left}>
-        <button type="button" className={styles.logo} onClick={onHome} title="GridMind home">GridMind</button>
+        <button type="button" className={styles.logo} onClick={onHome} title="GridMind home" aria-label="GridMind home">
+          <img src={`${import.meta.env.BASE_URL}gridmind-icon.png`} alt="" className={styles.logoImage} />
+          <span>GridMind</span>
+        </button>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
           <span className={styles.titleNote}>
