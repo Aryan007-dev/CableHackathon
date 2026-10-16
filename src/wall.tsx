@@ -1,4 +1,7 @@
+import { useRef } from "react"
 import { Text, Billboard, Edges } from "@react-three/drei"
+import { useFrame } from "@react-three/fiber"
+import * as THREE from "three"
 
 import { materials } from "./materials"
 import SurfaceMaterial from "./SurfaceMaterial"
@@ -56,6 +59,8 @@ function Wall({
   materialId,
   selected,
   openings = [],
+  animateIn = false,
+  animateDelay = 0,
 }: {
   start: [number, number]
   end: [number, number]
@@ -64,8 +69,24 @@ function Wall({
   materialId: string
   selected: boolean
   openings?: WallOpening[]
+  animateIn?: boolean
+  animateDelay?: number
 }) {
   const units = useEditor((s) => s.units)
+  const wallRef = useRef<THREE.Group>(null)
+  const startedAt = useRef<number | null>(null)
+  const finished = useRef(!animateIn)
+
+  useFrame(({ clock }) => {
+    const wall = wallRef.current
+    if (!wall || finished.current) return
+    if (startedAt.current === null) startedAt.current = clock.getElapsedTime()
+    const elapsed = clock.getElapsedTime() - startedAt.current - animateDelay
+    if (elapsed <= 0) return
+    const t = Math.min(elapsed / 1.5, 1)
+    wall.scale.y = 1 - (1 - t) ** 3
+    if (t === 1) finished.current = true
+  })
 
   const dx = end[0] - start[0]
   const dz = end[1] - start[1]
@@ -103,8 +124,10 @@ function Wall({
       {/* userData.isWall marks this group for WallFader, which fades the wall
           the camera is looking through. */}
       <group
+        ref={wallRef}
         position={[midX, 0, midZ]}
         rotation={[0, angle, 0]}
+        scale={[1, animateIn ? 0 : 1, 1]}
         userData={{ isWall: true }}
       >
         {pieces.map((piece, i) => (
