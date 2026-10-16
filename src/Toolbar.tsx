@@ -78,7 +78,14 @@ function Toolbar({ view, onViewChange }: ToolbarProps) {
     <header className={styles.bar}>
       {/* LEFT: brand + plan title */}
       <div className={styles.left}>
-        <span className={styles.logo}>GridMind </span>
+        <div className={styles.logo}>
+          <img
+            src="/gridmind-icon.png"
+            alt=""
+            className={styles.logoImage}
+          />
+          <span>GridMind</span>
+        </div>
         <div className={styles.title}>
           <span className={styles.titleName}>{projectName ?? "Untitled plan"}</span>
           <span className={styles.titleNote}>
