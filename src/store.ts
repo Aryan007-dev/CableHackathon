@@ -5,8 +5,6 @@ import type { Patch } from "immer";
 import { supabase } from "./supabase";
 import { PX_PER_METER } from "./units";
 import type { LengthUnit } from "./units";
-import { DEFAULT_LAYERS } from "./cable/cablePlan";
-import type { CableLayers, CablePlan } from "./cable/cablePlan";
 // This closes an import cycle: store -> planToScene -> planGeometry -> store,
 // which needs OPENING_DEFAULTS from here. It is safe because nothing in that
 // chain reads an imported value while the modules are still evaluating
@@ -198,9 +196,6 @@ interface SceneDocument {
 
     // Snapshot of floorPlan + planWalls the current 3D plan walls were built from.
     builtPlanKey?: string;
-
-    // A solved Cable Ring plan shown under the 2D plan and in 3D (read-only).
-    cablePlan: CablePlan | null;
 }
 
 // Saves made before a field existed won't have it; fill the gaps so the UI
@@ -218,7 +213,6 @@ export function normalizeDoc(raw: SceneDocument & { rectangles?: Rectangle[] }):
         planWalls,
         openings: fitOpenings(raw.openings ?? [], planWalls),
         planFurniture: raw.planFurniture ?? [],
-        cablePlan: raw.cablePlan ?? null,
     };
 }
 
@@ -252,24 +246,6 @@ interface EditorState {
     addPlanFurniture: (item: PlanFurniture) => void;
     buildRoomFromPlan: () => void;
 
-    // Show a solved cable plan (one undo step), or remove it.
-    importCablePlan: (plan: CablePlan) => void;
-    clearCablePlan: () => void;
-
-    // Session state: which parts of the cable plan are drawn (not saved, not undone).
-    cableLayers: CableLayers;
-    setCableLayer: <K extends keyof CableLayers>(layer: K, value: CableLayers[K]) => void;
-    // The hub being inspected (others are dimmed), or null for all.
-    cableFocus: string | null;
-    setCableFocus: (hubId: string | null) => void;
-    // A solve in progress ("Routing plan 2814…"), or the last solve's error.
-    cableBusy: string | null;
-    cableError: string | null;
-    setCableStatus: (busy: string | null, error?: string | null) => void;
-    // Bumped to ask the 3D view for a PNG of what it shows.
-    screenshotRequest: number;
-    requestScreenshot: () => void;
-
     mode: "translate" | "rotate" | "scale";
     setMode: (m: "translate" | "rotate" | "scale") => void;
 
@@ -286,6 +262,26 @@ interface EditorState {
     saveProject: (name: string) => Promise<void>;
     loadProject: (projectId: string) => Promise<void>;
     setProjectName: (name: string) => void;
+    listProjects: () => Promise<ProjectSummary[]>;
+    deleteProject: (projectId: string) => Promise<void>;
+    newProject: () => void;
+}
+
+const emptyDoc = (): SceneDocument => ({
+    id: crypto.randomUUID(),
+    version: 1,
+    room: { width: 5, length: 4, height: 2.7 },
+    nodes: {},
+    floorPlan: [],
+    planWalls: [],
+    openings: [],
+    planFurniture: [],
+});
+
+export interface ProjectSummary {
+    id: string;
+    name: string;
+    updated_at: string;
 }
 
 export const useEditor = create<EditorState>((set, get) => {
@@ -304,17 +300,7 @@ export const useEditor = create<EditorState>((set, get) => {
     };
 
     return {
-        doc: {
-            id: crypto.randomUUID(),
-            version: 1,
-            room: { width: 5, length: 4, height: 2.7 },
-            nodes: {},
-            floorPlan: [],
-            planWalls: [],
-            openings: [],
-            planFurniture: [],
-            cablePlan: null,
-        },
+        doc: emptyDoc(),
 
         dismissedTips: [],
         selectedIds: [],
@@ -328,30 +314,6 @@ export const useEditor = create<EditorState>((set, get) => {
         currentProjectName: null,
 
         setCameraMode: (m) => set({ cameraMode: m }),
-
-        cableLayers: DEFAULT_LAYERS,
-        setCableLayer: (layer, value) => set((s) => ({ cableLayers: { ...s.cableLayers, [layer]: value } })),
-        cableFocus: null,
-        setCableFocus: (hubId) => set({ cableFocus: hubId }),
-        cableBusy: null,
-        cableError: null,
-        setCableStatus: (busy, error = null) => set({ cableBusy: busy, cableError: error }),
-        screenshotRequest: 0,
-        requestScreenshot: () => set((s) => ({ screenshotRequest: s.screenshotRequest + 1 })),
-
-        importCablePlan: (plan) => {
-            commit((d) => {
-                d.cablePlan = plan;
-            });
-            set({ cableFocus: null });
-        },
-
-        clearCablePlan: () => {
-            commit((d) => {
-                d.cablePlan = null;
-            });
-            set({ cableFocus: null });
-        },
 
         units: loadUnits(),
         setUnits: (u) => {
@@ -375,7 +337,8 @@ export const useEditor = create<EditorState>((set, get) => {
                 const { error } = await supabase
                     .from("projects")
                     .update({ name, data: doc, updated_at: new Date().toISOString() })
-                    .eq("id", currentProjectId);
+                    .eq("id", currentProjectId)
+                    .eq("user_id", user.id);
 
                 if (error) throw error;
 
@@ -415,6 +378,36 @@ export const useEditor = create<EditorState>((set, get) => {
         },
 
         setProjectName: (name: string) => set({ currentProjectName: name }),
+
+        // Names and dates only: the heavy `data` column stays on the server
+        // until a project is actually opened.
+        listProjects: async () => {
+            const { data, error } = await supabase
+                .from("projects")
+                .select("id, name, updated_at")
+                .order("updated_at", { ascending: false });
+            if (error) throw error;
+            return data ?? [];
+        },
+
+        deleteProject: async (projectId: string) => {
+            const { error } = await supabase.from("projects").delete().eq("id", projectId);
+            if (error) throw error;
+            if (get().currentProjectId === projectId) {
+                set({ currentProjectId: null, currentProjectName: null });
+            }
+        },
+
+        // Start from a blank document, detached from any saved project.
+        newProject: () =>
+            set({
+                doc: emptyDoc(),
+                currentProjectId: null,
+                currentProjectName: null,
+                undoStack: [],
+                redoStack: [],
+                selectedIds: [],
+            }),
 
         setMode: (m) => set({ mode: m }),
 
