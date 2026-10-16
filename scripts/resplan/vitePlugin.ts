@@ -37,6 +37,13 @@ const SOLVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "so
 const SOLVE_TIMEOUT_MS = 3 * 60 * 1000;
 const MAX_PLAN_BYTES = 20 * 1024 * 1024;
 
+function defaultPython(): string {
+  const candidates = process.platform === "win32"
+    ? [join(SOLVER_DIR, ".venv", "Scripts", "python.exe"), join(SOLVER_DIR, ".venv", "Scripts", "python")]
+    : [join(SOLVER_DIR, ".venv", "bin", "python")];
+  return candidates.find(existsSync) ?? (process.platform === "win32" ? "python" : "python3");
+}
+
 // The uploads kept for the solver: datasetId -> { dir, file }. Only the latest
 // upload is kept; the folder is removed when replaced or when the server exits.
 const kept = new Map<string, { dir: string; file: string }>();
@@ -95,7 +102,7 @@ function runIndexer(python: string, file: string, displayName: string): Promise<
 }
 
 export function createResPlanHandler(options: { python?: string; tempRoot?: string; keep?: boolean } = {}) {
-  const python = options.python ?? process.env.RESPLAN_PYTHON ?? "python3";
+  const python = options.python ?? process.env.RESPLAN_PYTHON ?? defaultPython();
   const keep = options.keep ?? true;
 
   return async (req: IncomingMessage, res: ServerResponse, _next?: Next) => {
@@ -183,11 +190,10 @@ function readBody(req: IncomingMessage, limit: number): Promise<string> {
   });
 }
 
-// The solver's own virtualenv (solver/.venv), else CABLE_SOLVER_PYTHON, else python3.
+// The solver's own virtualenv (solver/.venv), else the platform's system Python.
 function solverPython(): string {
   if (process.env.CABLE_SOLVER_PYTHON) return process.env.CABLE_SOLVER_PYTHON;
-  const venv = join(SOLVER_DIR, ".venv", "bin", "python");
-  return existsSync(venv) ? venv : "python3";
+  return defaultPython();
 }
 
 function runSolver(python: string, request: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
