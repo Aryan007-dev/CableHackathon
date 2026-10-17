@@ -83,12 +83,13 @@ function furnitureCollides(id: string, scene: THREE.Object3D | null, position: T
 
 // --- WASD camera navigation (upright; OrbitControls preserved) ---------------
 
-function WasdCamera({ speed = 6 }: { speed?: number }) {
+function WasdCamera({ speed = 6, active }: { speed?: number; active: boolean }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls); // OrbitControls (makeDefault)
   const keys = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
+    if (!active) return;
     const down = (e: KeyboardEvent) => {
       const el = document.activeElement;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
@@ -102,7 +103,7 @@ function WasdCamera({ speed = 6 }: { speed?: number }) {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [active]);
 
   useFrame((_, delta) => {
     const k = keys.current;
@@ -151,7 +152,7 @@ function WasdCamera({ speed = 6 }: { speed?: number }) {
   return null;
 }
 
-function Scene() {
+function Scene({ active, animationRunId }: { active: boolean; animationRunId: number }) {
   // three.js materials need real colour strings, so read them from theme.css once.
   const [colors] = useState(() => ({
     background: themeColor("--color-scene-background", "#f7f6f1"),
@@ -179,6 +180,18 @@ function Scene() {
 
 
   const [contextLost, setContextLost] = useState(false);
+
+  // Keep the plan-wall animation stagger in insertion order without rescanning
+  // every preceding node for each wall (which made scene rendering quadratic).
+  const sceneNodes = Object.values(nodes);
+  const wallAnimationDelays = new Map<string, number>();
+  let planWallIndex = 0;
+  for (const node of sceneNodes) {
+    if (node.type === "wall" && node.fromPlan) {
+      wallAnimationDelays.set(node.id, planWallIndex * 0.08);
+      planWallIndex += 1;
+    }
+  }
 
   useEffect(() => {
     const counts: Record<string, number> = {};
@@ -238,6 +251,7 @@ function Scene() {
   }, [proxy, posKey, quatKey, scaleKey]);
 
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: any) => {
       const el = document.activeElement;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
@@ -252,7 +266,7 @@ function Scene() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, removeNode, select, setMode]);
+  }, [active, selectedIds, removeNode, select, setMode]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -278,6 +292,7 @@ function Scene() {
       <Canvas
 
         style={{ width: "100%", height: "100%" }}
+        frameloop={active ? "always" : "demand"}
         camera={{ position: [8, 8, 8], fov: 50 }}
         onCreated={({ gl }) => {
           const canvas = gl.domElement;
@@ -323,11 +338,12 @@ function Scene() {
         }
         <OrbitControls
           makeDefault
+          enabled={active}
           enableRotate={cameraMode !== "topdown"}
           minPolarAngle={cameraMode === "topdown" ? 0 : 0}
           maxPolarAngle={cameraMode === "topdown" ? 0 : Math.PI / 2}
         />
-        <WasdCamera />
+        <WasdCamera active={active} />
         <WallFader />
 
         {/* Grounds the editor's own furniture at the origin; a cable plan has its own slab. */}
@@ -339,9 +355,9 @@ function Scene() {
         <Suspense fallback={null}>
 
           {/* An imported Cable Ring plan (read-only), if there is one. */}
-          <CablePlan3D />
+          <CablePlan3D animationRunId={animationRunId} />
 
-          {Object.values(nodes).map((node) => {
+          {sceneNodes.map((node) => {
             if (node.type === "wall") {
               const sx = node.start[0], sz = node.start[2];
               const ex = node.end[0], ez = node.end[2];
@@ -416,6 +432,9 @@ function Scene() {
                     materialId={node.materialId}
                     selected={selectedIds.includes(node.id)}
                     openings={node.openings}
+                    animationRunId={animationRunId}
+                    animateIn={node.fromPlan}
+                    animateDelay={wallAnimationDelays.get(node.id) ?? 0}
                   />
                 </group>
 
@@ -604,7 +623,7 @@ function Scene() {
           })}
         </Suspense>
 
-        {hasSelection && proxy && (
+        {active && hasSelection && proxy && (
           <TransformControls
             translationSnap={0.25}
             rotationSnap={Math.PI / 12}

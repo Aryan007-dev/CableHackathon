@@ -101,6 +101,9 @@ function FloorPlan() {
     }, [cableExtent, fitTo]);
 
     const [activeTool, setActiveTool] = useState<Tool>("select");
+    // This controls only measurements drawn on the 2D canvas. Cable panel
+    // layer settings and 3D measurements keep their existing behavior.
+    const [showMeasurements, setShowMeasurements] = useState(false);
 
     // Drawing tools.
     const [rectStart, setRectStart] = useState<Point | null>(null);
@@ -572,6 +575,16 @@ function FloorPlan() {
                     <button onClick={() => zoomAtCenter(1.2)}>+</button>
                     <button onClick={() => zoomAtCenter(1 / 1.2)}>-</button>
                     <span style={{ fontSize: 12, lineHeight: "22px" }}>{Math.round(scale * 100)}%</span>
+                    <button
+                        type="button"
+                        aria-pressed={showMeasurements}
+                        aria-label={showMeasurements ? "Hide 2D measurements" : "Show 2D measurements"}
+                        title="Show or hide lengths and room areas in 2D"
+                        onClick={() => setShowMeasurements((shown) => !shown)}
+                        style={{ marginLeft: 8, whiteSpace: "nowrap" }}
+                    >
+                        {showMeasurements ? "Hide measurements" : "Show measurements"}
+                    </button>
                 </div>
 
                 {/* FLOOR TIP */}
@@ -655,7 +668,7 @@ function FloorPlan() {
 
                         {/* Angle of the wall being drawn, measured from the
                             previous wall when there is one. */}
-                        {liveWall && (
+                        {showMeasurements && liveWall && (
                             <AngleIndicator
                                 from={liveWall[0]}
                                 to={liveWall[1]}
@@ -663,7 +676,7 @@ function FloorPlan() {
                             />
                         )}
 
-                        <LengthLabels
+                        {showMeasurements && <LengthLabels
                             points={points}
                             showFreehand={!polylineRectangle}
                             liveSegment={liveWall}
@@ -671,13 +684,13 @@ function FloorPlan() {
                             openings={openings}
                             roomWallIndexes={roomWallIndexes}
                             units={units}
-                        />
+                        />}
 
-                        <RoomLabels
+                        {showMeasurements && <RoomLabels
                             rectangles={displayedRectangles}
                             units={units}
                             showArea={!(cablePlan?.source?.kind === "drawn" && cableLayers.labels)}
-                        />
+                        />}
 
                         {cableView && (
                             <CableOverlayLayer
@@ -685,6 +698,7 @@ function FloorPlan() {
                                 overlay={cableOverlay}
                                 layers={cableLayers}
                                 units={units}
+                                showMeasurements={showMeasurements}
                                 interactive={activeTool === "select"}
                                 draggable={solution === "ours"}
                             />
