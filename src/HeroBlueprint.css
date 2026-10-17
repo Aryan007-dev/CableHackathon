@@ -1,0 +1,66 @@
+.hero-blueprint {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #385b49;
+  border-radius: 9px;
+  background: #10251d;
+  box-shadow: 0 34px 75px rgba(20, 50, 35, .22), 0 8px 22px rgba(20, 50, 35, .13);
+  color: #d9e9da;
+}
+.hero-blueprint-top,
+.hero-blueprint-bottom {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .09em;
+}
+.hero-blueprint-top { min-height: 55px; padding: 0 22px; border-bottom: 1px solid rgba(149, 188, 159, .17); color: #8faf9c; }
+.hero-blueprint-eyebrow { display: inline-flex; align-items: center; gap: 10px; color: #d0e1ce; }
+.hero-blueprint-eyebrow i,
+.hero-blueprint-live i { width: 6px; height: 6px; border-radius: 50%; background: #9edcaa; box-shadow: 0 0 11px #9edcaa; }
+.hero-blueprint-stage { position: relative; display: grid; place-items: center; height: clamp(380px, 37vw, 535px); overflow: hidden; background: radial-gradient(circle at 52% 49%, #1a4334 0, #10291f 48%, #0b1c17 100%); }
+.hero-blueprint-aura { position: absolute; width: 65%; aspect-ratio: 1; border-radius: 50%; background: #87b692; opacity: .08; filter: blur(55px); }
+.hero-blueprint-stage svg { position: relative; display: block; width: 105%; max-width: none; overflow: visible; transform: perspective(900px) rotateX(13deg) rotateZ(-7deg) scale(.91) translateY(-9px); filter: drop-shadow(10px 20px 12px rgba(0, 10, 5, .4)); }
+.hero-blueprint-zones { opacity: .18; }
+.hero-blueprint-room-edges { opacity: .35; }
+.hero-blueprint-circuit { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.hero-blueprint-circuit-coral { color: #ff8f75; }
+.hero-blueprint-circuit-blue { color: #75c8e6; }
+.hero-blueprint-cable-shadow { stroke: #061712; stroke-width: 11; transform: translateY(5px); opacity: .7; }
+.hero-blueprint-cable-body { stroke: currentColor; stroke-width: 7; filter: drop-shadow(0 0 5px currentColor); }
+.hero-blueprint-cable-highlight { stroke: #fff9e6; stroke-width: 1.1; opacity: .63; transform: translateY(-1.5px); }
+.hero-blueprint-signal { stroke: #fffce9; stroke-width: 8; stroke-dasharray: 2.3 97.7; opacity: .95; filter: drop-shadow(0 0 9px currentColor); animation: hero-blueprint-travel 8s linear infinite; }
+.hero-blueprint-circuit-blue .hero-blueprint-signal { animation-duration: 9.5s; animation-delay: -3s; }
+.hero-blueprint-node-coral, .hero-blueprint-hub-coral { color: #ffad94; }
+.hero-blueprint-node-blue, .hero-blueprint-hub-blue { color: #a1dcf0; }
+.hero-blueprint-hub { filter: drop-shadow(0 0 10px currentColor); }
+@keyframes hero-blueprint-travel { to { stroke-dashoffset: -100; } }
+.hero-blueprint-bottom { min-height: 58px; padding: 0 20px 0 22px; border-top: 1px solid rgba(149, 188, 159, .17); color: #adbfaf; }
+.hero-blueprint-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 11px 19px; }
+.hero-blueprint-legend span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.hero-blueprint-legend i { display: inline-block; flex: none; }
+.hero-blueprint-key-coral, .hero-blueprint-key-blue { width: 13px; height: 3px; border-radius: 3px; }
+.hero-blueprint-key-coral { background: #ff8f75; box-shadow: 0 0 7px #ff8f75; }
+.hero-blueprint-key-blue { background: #75c8e6; box-shadow: 0 0 7px #75c8e6; }
+.hero-blueprint-live { color: #83ac8d; }
+.hero-blueprint-bottom button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 7px; border: 1px solid rgba(161, 199, 170, .26); border-radius: 3px; background: transparent; color: #c9ddca; font: inherit; letter-spacing: .02em; cursor: pointer; }
+.hero-blueprint-bottom button:hover { background: rgba(179, 220, 183, .1); }
+.hero-blueprint-paused .hero-blueprint-signal { animation-play-state: paused; }
+.hero-blueprint-paused .hero-blueprint-live i { box-shadow: none; opacity: .45; }
+
+@media (max-width: 650px) {
+  .hero-blueprint-top { min-height: 47px; padding-inline: 14px; font-size: 9px; }
+  .hero-blueprint-stage { height: 340px; }
+  .hero-blueprint-stage svg { width: 120%; transform: perspective(900px) rotateX(9deg) rotateZ(-7deg) scale(.91); }
+  .hero-blueprint-bottom { min-height: 55px; padding-inline: 13px; font-size: 9px; }
+  .hero-blueprint-legend { gap: 7px 12px; }
+  .hero-blueprint-live { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-blueprint-signal { animation: none; stroke-dashoffset: 0; }
+  .hero-blueprint-bottom button { display: none; }
+}

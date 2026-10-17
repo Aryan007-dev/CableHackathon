@@ -19,6 +19,7 @@ import Floor from "./floor";
 import { themeColor } from "./themeColor";
 import WallFader from "./WallFader";
 import CablePlan3D from "./cable/CablePlan3D";
+import CableStage from "./cable/CableStage";
  import { footprintsOverlap } from "./2d/planGeometry"; 
 // A floor footprint: the corners of a convex shape as [x, z], in order around it.
 type Footprint = [number, number][];
@@ -301,12 +302,20 @@ function Scene() {
           setSelectedHandle(null);
         }}
       >
-        <color attach="background" args={[colors.background]} />
+        <color attach="background" args={[hasCablePlan ? "#344a50" : colors.background]} />
         <object3D ref={setProxy} />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]}>
-          <planeGeometry args={[100, 100]} />
-          <meshBasicMaterial color={colors.ground} />
-        </mesh>
+        {hasCablePlan ? <CableStage /> : (
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]}>
+            <planeGeometry args={[100, 100]} />
+            <meshBasicMaterial color={colors.ground} />
+          </mesh>
+        )}
+        {hasCablePlan && (
+          <>
+            <hemisphereLight args={["#eef4e9", "#6e8176", 0.3]} />
+            <directionalLight position={[-8, 18, 12]} intensity={1.35} color="#fff4dc" />
+          </>
+        )}
         {cameraMode === "topdown" ? (
           <OrthographicCamera makeDefault position={[0, 30, 0]} zoom={50} near={0.1} far={1000} />
         ) :
@@ -326,6 +335,8 @@ function Scene() {
 
         <Suspense fallback={null}>
           <Environment preset="apartment" />
+        </Suspense>
+        <Suspense fallback={null}>
 
           {/* An imported Cable Ring plan (read-only), if there is one. */}
           <CablePlan3D />

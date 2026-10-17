@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronUp, Download, Loader2, X } from "lucide-react";
 
 import { useEditor } from "../store";
 import { downloadJson, exportPdf, exportPng, exportSvg } from "./exportPlan";
 import { alternativesOf, hubVar, SOLUTION_LABELS, solutionView } from "./cablePlan";
-import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, SolutionId } from "./cablePlan";
+import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, CableWallFinish, SolutionId } from "./cablePlan";
+import { featuresByHub } from "./cableFeatures";
+import type { CableFeatureKind } from "./cableFeatures";
 import CableStory from "./CableStory";
 import styles from "./CablePanel.module.css";
 
@@ -83,6 +85,8 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
     const setStatus = useEditor((s) => s.setCableStatus);
     const requestScreenshot = useEditor((s) => s.requestScreenshot);
     const [open, setOpen] = useState(true);
+    const shown = useMemo(() => (plan ? solutionView(plan, layers.solution) : null), [plan, layers.solution]);
+    const features = useMemo(() => (shown ? featuresByHub(shown) : {}), [shown]);
 
     if (!plan && !busy && !error) return null;
 
@@ -90,7 +94,6 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
     const title = plan ? (plan.source?.kind === "drawn" ? "Drawn plan" : `Plan ${plan.plan_id}`) : "Cable plan";
     const failed = plan?.checks?.filter((c) => !c.passed) ?? [];
     // The solution on screen (ours or a baseline) and the comparison table.
-    const shown = plan ? solutionView(plan, layers.solution) : null;
     const m = shown?.metrics ?? {};
     const columns = plan ? columnsOf(plan) : [];
     const best = (key: keyof CableMetrics) =>
@@ -260,6 +263,18 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                             )}
                             {view === "3d" && (
                                 <label className={styles.field}>
+                                    Wall
+                                    <select value={layers.wallFinish} onChange={(e) => setLayer("wallFinish", e.target.value as CableWallFinish)}>
+                                        <option value="plain">Plain</option>
+                                        <option value="cladding">Brick cladding</option>
+                                        <option value="beige">Warm plaster</option>
+                                        <option value="concrete">Concrete</option>
+                                        <option value="painted">Weathered plaster</option>
+                                    </select>
+                                </label>
+                            )}
+                            {view === "3d" && (
+                                <label className={styles.field}>
                                     Cable at
                                     <select value={layers.height} onChange={(e) => setLayer("height", e.target.value as CableHeight)}>
                                         <option value="floor">Floor</option>
@@ -291,6 +306,26 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                                                 {h.sequence.length - 2} node{h.sequence.length === 3 ? "" : "s"} · {h.ring_length_m.toFixed(1)} m
                                             </span>
                                         </button>
+                                        {view === "3d" && focus === h.hub_id && (
+                                            <div className={styles.featurePicker} role="group" aria-label={`Highlight points on ${h.hub_id}`}>
+                                                {(["bends", "crossings", "overlaps"] as CableFeatureKind[]).map((kind) => {
+                                                    const count = features[h.hub_id]?.[kind].length ?? 0;
+                                                    return (
+                                                        <button key={kind} type="button" className={styles.chip}
+                                                            data-active={layers.pointHighlight === kind}
+                                                            aria-pressed={layers.pointHighlight === kind}
+                                                            disabled={count === 0}
+                                                            title={count ? `Highlight ${count} ${kind} on ${h.hub_id}` : `No ${kind} on ${h.hub_id}`}
+                                                            onClick={() => {
+                                                                setLayer("pointHighlight", layers.pointHighlight === kind ? null : kind);
+                                                                if (kind !== "bends") setLayer("problems", true);
+                                                            }}>
+                                                            {kind[0].toUpperCase() + kind.slice(1)} <span className={styles.featureCount}>{count}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                         {focus === h.hub_id && (layers.solution === "ours" && plan.explain?.hubs[h.hub_id] ? (
                                             <ul className={`${styles.why} ${styles.sequence}`}>
                                                 {plan.explain.hubs[h.hub_id].map((line, i) => <li key={i}>{line}</li>)}

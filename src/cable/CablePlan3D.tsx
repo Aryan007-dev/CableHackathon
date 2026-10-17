@@ -6,7 +6,7 @@
 // editor's own objects. Rings, hubs and nodes can be clicked to inspect a hub.
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Billboard, Line, Text, useTexture } from "@react-three/drei";
+import { Billboard, ContactShadows, Line, Text, useTexture } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 
@@ -14,11 +14,14 @@ import { useEditor } from "../store";
 import { FLOOR_TEXTURES } from "../floorTextures";
 import { insidePolygon } from "../2d/planGeometry";
 import { moveHub } from "./cableActions";
+import CableFeatureMarkers from "./CableFeatureMarkers";
+import { featuresByHub } from "./cableFeatures";
+import type { CableFeatureKind } from "./cableFeatures";
 import { themeColor } from "../themeColor";
 import { formatArea, formatLength } from "../units";
 import type { LengthUnit } from "../units";
 import { frameKey, fromScene, hubOfNode, hubToken, ringsToDraw, roomEdges, solutionView, toScene } from "./cablePlan";
-import type { CableFloor, CableHeight, CablePlan, CableRoom, CableShape, XY } from "./cablePlan";
+import type { CableFloor, CableHeight, CablePlan, CableRoom, CableShape, CableWallFinish, XY } from "./cablePlan";
 
 const WALL_HEIGHT = 2.7;
 const CUTAWAY_HEIGHT = 0.9; // low walls, so the cables stay in view
@@ -35,6 +38,19 @@ const DIM = 0.15; // opacity of what isn't the inspected hub's
 const SLAB = 0.15; // the floor slab's thickness, below the floor (y = 0)
 const FLOOR_PATTERN_M = 2; // one texture tile per 2 m of floor
 const FLOOR_TEXTURE: Record<Exclude<CableFloor, "zones">, keyof typeof FLOOR_TEXTURES> = { wood: "laminate", tiles: "concrete" };
+const wallMaps = (name: string, size: "1k" | "2k" = "1k", packedRoughness = false) => ({
+    map: `${import.meta.env.BASE_URL}cable-plans/textures/${name}_diff_${size}.jpg`,
+    normalMap: `${import.meta.env.BASE_URL}cable-plans/textures/${name}_nor_gl_${size}.jpg`,
+    roughnessMap: `${import.meta.env.BASE_URL}cable-plans/textures/${name}_${packedRoughness ? "arm" : "rough"}_${size}.jpg`,
+});
+const WALL_TEXTURES: Record<Exclude<CableWallFinish, "plain">, ReturnType<typeof wallMaps>> = {
+    cladding: wallMaps("exterior_wall_cladding_02", "2k", true),
+    beige: wallMaps("beige_wall_001"),
+    concrete: wallMaps("concrete_wall_009"),
+    painted: wallMaps("painted_plaster_wall"),
+};
+const WALL_PATTERN_M = 2;
+const WALL_NORMAL_SCALE = new THREE.Vector2(0.35, 0.35);
 const FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y = 0, for dragging on the floor
 
 const noRaycast = () => null;
@@ -60,8 +76,42 @@ function useDispose(geometry: THREE.BufferGeometry) {
 }
 
 // Polygons extruded straight up from `bottom` to `top`.
-function Prisms({ plan, shapes, bottom, top, color, opacity = 1, rise = false }: {
-    plan: CablePlan; shapes: CableShape[]; bottom: number; top: number; color: string; opacity?: number; rise?: boolean;
+function useWallMaterial(finish: Exclude<CableWallFinish, "plain">) {
+    const loaded = useTexture(WALL_TEXTURES[finish]);
+    const maxAnisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy());
+    const textures = useMemo(() => {
+        const tile = (source: THREE.Texture, colorSpace: THREE.ColorSpace) => {
+            const texture = source.clone();
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1 / WALL_PATTERN_M, 1 / WALL_PATTERN_M);
+            texture.colorSpace = colorSpace;
+            texture.anisotropy = Math.min(4, maxAnisotropy);
+            texture.needsUpdate = true;
+            return texture;
+        };
+        return {
+            map: tile(loaded.map, THREE.SRGBColorSpace),
+            normalMap: tile(loaded.normalMap, THREE.NoColorSpace),
+            // Roughness maps, including the cladding's packed ARM map, use green.
+            roughnessMap: tile(loaded.roughnessMap, THREE.NoColorSpace),
+        };
+    }, [loaded.map, loaded.normalMap, loaded.roughnessMap, maxAnisotropy]);
+    const material = useMemo(() => new THREE.MeshStandardMaterial({
+        ...textures,
+        normalScale: WALL_NORMAL_SCALE,
+        roughness: 0.95,
+        metalness: 0,
+    }), [textures]);
+    useEffect(() => () => {
+        material.dispose();
+        Object.values(textures).forEach((texture) => texture.dispose());
+    }, [material, textures]);
+    return material;
+}
+
+function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise = false, onRiseComplete }: {
+    plan: CablePlan; shapes: CableShape[]; bottom: number; top: number; color: string; opacity?: number; material?: THREE.Material; rise?: boolean;
+    onRiseComplete?: () => void;
 }) {
     const meshRef = useRef<THREE.Mesh>(null);
     const startedAt = useRef<number | null>(null);
@@ -71,6 +121,11 @@ function Prisms({ plan, shapes, bottom, top, color, opacity = 1, rise = false }:
         [plan, shapes, bottom, top]
     );
     useDispose(geometry);
+    useEffect(() => {
+        startedAt.current = null;
+        finished.current = !rise;
+        if (meshRef.current) meshRef.current.scale.z = rise ? 0 : 1;
+    }, [geometry, rise]);
     useFrame(({ clock }) => {
         const mesh = meshRef.current;
         if (!mesh || finished.current) return;
@@ -78,14 +133,81 @@ function Prisms({ plan, shapes, bottom, top, color, opacity = 1, rise = false }:
         const t = Math.min((clock.getElapsedTime() - startedAt.current - 1.0) / 1.5, 1);
         if (t <= 0) return;
         mesh.scale.z = 1 - (1 - t) ** 3;
-        if (t === 1) finished.current = true;
+        if (t === 1) {
+            finished.current = true;
+            onRiseComplete?.();
+        }
     });
     if (top <= bottom || shapes.length === 0) return null;
     return (
-        <mesh ref={meshRef} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, bottom, 0]} scale={[1, 1, rise ? 0 : 1]} raycast={noRaycast}>
-            <meshStandardMaterial color={color} transparent={opacity < 1} opacity={opacity} />
+        <mesh ref={meshRef} geometry={geometry} material={material} rotation={[-Math.PI / 2, 0, 0]} position={[0, bottom, 0]} scale={[1, 1, rise ? 0 : 1]} raycast={noRaycast}>
+            {!material && <meshStandardMaterial color={color} transparent={opacity < 1} opacity={opacity} />}
         </mesh>
     );
+}
+
+function PlanWalls({ plan, doors, wallTop, wallColor, windowColor, material, rise = true, showWindowGlazing = false, onWallsReady }: {
+    plan: CablePlan; doors: CableShape[]; wallTop: number; wallColor: string; windowColor: string; material?: THREE.Material; rise?: boolean;
+    showWindowGlazing?: boolean; onWallsReady?: () => void;
+}) {
+    return <>
+        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={wallColor} material={material} rise={rise} onRiseComplete={onWallsReady} />
+        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
+        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={wallColor} material={material} rise={rise} />
+        {showWindowGlazing && <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={windowColor} opacity={0.45} />}
+        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
+    </>;
+}
+
+function TexturedPlanWalls({ finish, ...props }: Omit<Parameters<typeof PlanWalls>[0], "material"> & { finish: Exclude<CableWallFinish, "plain"> }) {
+    const material = useWallMaterial(finish);
+    return <PlanWalls {...props} material={material} />;
+}
+
+// The imported door polygon is a wall-depth rectangle. Its longest edge gives
+// the opening direction; the panel hinges at one end and stays slightly ajar.
+function DoorLeaves({ plan, doors, height }: { plan: CablePlan; doors: CableShape[]; height: number }) {
+    const leaves = useMemo(() => doors.flatMap((door) => {
+        if (door.outer.length < 4) return [];
+        const corners = door.outer.map((point) => toScene(plan, point));
+        let longest = 0;
+        let edge = 0;
+        for (let i = 0; i < corners.length; i++) {
+            const a = corners[i];
+            const b = corners[(i + 1) % corners.length];
+            const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            if (length > longest) { longest = length; edge = i; }
+        }
+        if (longest < 0.35 || longest > 2.5) return [];
+        const a = corners[edge];
+        const b = corners[(edge + 1) % corners.length];
+        const cx = corners.reduce((sum, p) => sum + p[0], 0) / corners.length;
+        const cz = corners.reduce((sum, p) => sum + p[1], 0) / corners.length;
+        const ux = (b[0] - a[0]) / longest;
+        const uz = (b[1] - a[1]) / longest;
+        return [{ x: cx - ux * longest / 2, z: cz - uz * longest / 2, angle: -Math.atan2(uz, ux), width: longest }];
+    }), [plan, doors]);
+    const panelHeight = Math.min(height, DOOR_TOP - 0.06);
+    return <group>
+        {leaves.map((leaf, index) => (
+            <group key={index} position={[leaf.x, 0, leaf.z]} rotation={[0, leaf.angle, 0]}>
+                <group rotation={[0, 0.38, 0]}>
+                    <mesh position={[leaf.width / 2, panelHeight / 2, 0]} raycast={noRaycast} castShadow>
+                        <boxGeometry args={[leaf.width - 0.06, panelHeight, 0.055]} />
+                        <meshStandardMaterial color="#a97749" roughness={0.83} metalness={0} />
+                    </mesh>
+                    <mesh position={[leaf.width / 2, panelHeight / 2, 0.031]} raycast={noRaycast}>
+                        <boxGeometry args={[leaf.width - 0.18, panelHeight * 0.72, 0.008]} />
+                        <meshStandardMaterial color="#b98759" roughness={0.88} metalness={0} />
+                    </mesh>
+                    <mesh position={[leaf.width - 0.15, Math.min(0.95, panelHeight * 0.58), 0.047]} raycast={noRaycast}>
+                        <sphereGeometry args={[0.035, 8, 6]} />
+                        <meshStandardMaterial color="#d6ba7a" roughness={0.35} metalness={0.55} />
+                    </mesh>
+                </group>
+            </group>
+        ))}
+    </group>;
 }
 
 function RoomFloor({ plan, shape, color, opacity = 1, y = 0.005 }: {
@@ -128,7 +250,7 @@ function RoomDimensions({ plan, room, units, color }: { plan: CablePlan; room: C
                         <Line points={[p(len - trim, inset - 0.08), p(len - trim, inset + 0.08)]} color={color} lineWidth={1.5} raycast={noRaycast} />
                         <group position={p(len / 2, inset + 0.2)} rotation={[0, angle, 0]}>
                             <Text rotation={[-Math.PI / 2, 0, 0]} fontSize={0.17} color={color} anchorX="center" anchorY="middle"
-                                outlineWidth={0.012} outlineColor="#ffffff" raycast={noRaycast}>
+                                outlineWidth={0.02} outlineColor="#263b36" raycast={noRaycast}>
                                 {formatLength(edge.length, units)}
                             </Text>
                         </group>
@@ -197,13 +319,21 @@ function Tube({ path, radius, color, opacity = 1, onClick, reveal }: {
     const meshRef = useRef<THREE.Mesh>(null);
     const startedAt = useRef<number | null>(null);
     const finished = useRef(!reveal);
+    const shouldReveal = reveal !== undefined;
+    const revealDelay = reveal?.delay;
+    const revealDuration = reveal?.duration;
     const geometry = useMemo(() => {
         const segments = Math.max(16, Math.ceil(path.getLength() / 0.05));
         const tube = new THREE.TubeGeometry(path, segments, radius, 8, false);
-        if (reveal) tube.setDrawRange(0, 0);
+        if (shouldReveal) tube.setDrawRange(0, 0);
         return tube;
-    }, [path, radius, !!reveal]);
+    }, [path, radius, shouldReveal]);
     useDispose(geometry);
+    useEffect(() => {
+        startedAt.current = null;
+        finished.current = !shouldReveal;
+        geometry.setDrawRange(0, shouldReveal ? 0 : Infinity);
+    }, [geometry, shouldReveal, revealDelay, revealDuration]);
     useFrame(({ clock }) => {
         const mesh = meshRef.current;
         if (!reveal || !mesh || finished.current) return;
@@ -306,6 +436,7 @@ function Screenshot({ name }: { name: string }) {
 export default function CablePlan3D() {
     const stored = useEditor((s) => s.doc.cablePlan);
     const layers = useEditor((s) => s.cableLayers);
+    const setLayer = useEditor((s) => s.setCableLayer);
     // The solution being shown (ours or a baseline), and one overlaid in grey.
     const plan = useMemo(() => stored && solutionView(stored, layers.solution), [stored, layers.solution]);
     const overlay = useMemo(
@@ -323,6 +454,7 @@ export default function CablePlan3D() {
     const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
     // A hub being dragged across the floor: where it is now, scene [x, z].
     const [drag, setDrag] = useState<{ hubId: string; from: XY; at: XY } | null>(null);
+    const [detailsReadyFor, setDetailsReadyFor] = useState<{ plan: CablePlan; finish: CableWallFinish; wallTop: number } | null>(null);
 
     const colors = useMemo(() => ({
         wall: themeColor("--color-cable-wall-3d", "#e9e6dc"),
@@ -333,7 +465,7 @@ export default function CablePlan3D() {
         warning: themeColor("--color-warning", "#b5533c"),
         naive: themeColor("--color-ink-faint", "#9aa19b"),
         slab: themeColor("--color-cable-slab", "#cfccc0"),
-        dimension: themeColor("--color-dimension-text", "#3e5644"),
+        dimension: themeColor("--color-cable-dimension-3d", "#ffe26b"),
     }), []);
 
     // Each ring to draw as a 3D path, at its hub's own height.
@@ -351,6 +483,7 @@ export default function CablePlan3D() {
         () => (plan?.problems ? plan.problems.overlaps.map((seg) => pathOf(plan, seg, base + 0.02)) : []),
         [plan, base]
     );
+    const features = useMemo(() => (plan ? featuresByHub(plan) : {}), [plan]);
     // Stable between renders, so the door headers aren't rebuilt every frame.
     const doors = useMemo(() => (plan ? [...plan.doors, ...plan.front_doors] : []), [plan]);
     // The building's floor: its outline, or (older files) all its rooms.
@@ -358,13 +491,26 @@ export default function CablePlan3D() {
 
     if (!plan) return null;
 
+    const [stageX, stageZ] = toScene(plan, [
+        (plan.bounds.min_x + plan.bounds.max_x) / 2,
+        (plan.bounds.min_y + plan.bounds.max_y) / 2,
+    ]);
+    const stageSpan = Math.max(plan.bounds.max_x - plan.bounds.min_x, plan.bounds.max_y - plan.bounds.min_y);
+
     const wallTop = layers.cutaway ? CUTAWAY_HEIGHT : WALL_HEIGHT;
+    const detailsReady = detailsReadyFor?.plan === plan && detailsReadyFor.finish === layers.wallFinish && detailsReadyFor.wallTop === wallTop;
+    const revealDetails = () => setDetailsReadyFor({ plan, finish: layers.wallFinish, wallTop });
     const hubOf = hubOfNode(plan);
     const problems = plan.problems;
     const opacity = (hubId: string | null) => (focus && hubId !== focus ? DIM : 1);
     const pick = (hubId: string | null) => (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         setFocus(hubId && hubId !== focus ? hubId : null);
+    };
+    const selectFeature = (hubId: string, kind: CableFeatureKind) => {
+        setFocus(hubId);
+        setLayer("pointHighlight", kind);
+        if (kind !== "bends") setLayer("problems", true);
     };
     const tint = (hubId: string) =>
         `#${new THREE.Color(colors.room).lerp(new THREE.Color(hubColor(hubId)), focus && focus !== hubId ? 0.05 : 0.22).getHexString()}`;
@@ -422,6 +568,11 @@ export default function CablePlan3D() {
             <Screenshot name={`plan-${plan.plan_id}`} />
 
             {layers.rooms && (
+                <ContactShadows key={frameKey(plan)} position={[stageX, -0.195, stageZ]}
+                    scale={stageSpan * 1.35} opacity={0.4} blur={2.5} far={4} resolution={512} frames={1} />
+            )}
+
+            {layers.rooms && (
                 <>
                     {/* The building's slab, then its floor: tinted by zone, or a
                         real finish with each zone's colour washed over it. */}
@@ -443,15 +594,14 @@ export default function CablePlan3D() {
                             )}
                         </>
                     )}
-                    {!hasManualWalls && (<>
-                        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={colors.wall} rise />
-                        {/* Over each door, the wall carries on above its head. */}
-                        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={colors.wall} rise />
-                        {/* Windows: wall below the sill and above the head, glass between. */}
-                        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={colors.wall} rise />
-                        <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={colors.window} opacity={0.45} />
-                        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={colors.wall} rise />
-                    </>)}
+                    {!hasManualWalls && (layers.wallFinish !== "plain" ? (
+                        <Suspense fallback={<PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} rise={false} />}>
+                            <TexturedPlanWalls key={layers.wallFinish} finish={layers.wallFinish} plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} />
+                        </Suspense>
+                    ) : (
+                        <PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} />
+                    ))}
+                    {!hasManualWalls && detailsReady && <DoorLeaves plan={plan} doors={doors} height={wallTop} />}
                 </>
             )}
 
@@ -470,7 +620,7 @@ export default function CablePlan3D() {
                                 {r.label}
                             </Text>
                             <Text position={[0, -0.04, 0]} fontSize={0.26} color={colors.dimension} anchorX="center" anchorY="top"
-                                outlineWidth={0.015} outlineColor="#ffffff" raycast={noRaycast}>
+                                outlineWidth={0.02} outlineColor="#263b36" raycast={noRaycast}>
                                 {formatArea(r.area_m2, units)}
                             </Text>
                             {r.room_id && (
@@ -508,17 +658,10 @@ export default function CablePlan3D() {
                             {overlapPaths.map((path, i) => (
                                 <Tube key={`o${i}`} path={path} radius={CABLE_RADIUS * 2.2} color={colors.warning} opacity={0.5} />
                             ))}
-                            {problems.crossings.map((p, i) => {
-                                const [x, z] = toScene(plan, p);
-                                return (
-                                    <mesh key={`x${i}`} position={[x, base + 0.05, z]} raycast={noRaycast}>
-                                        <sphereGeometry args={[0.14, 16, 12]} />
-                                        <meshStandardMaterial color={colors.warning} transparent opacity={0.75} />
-                                    </mesh>
-                                );
-                            })}
                         </>
                     )}
+                    <CableFeatureMarkers plan={plan} features={features} heights={hubY} focus={focus}
+                        highlight={layers.pointHighlight} showProblems={layers.problems} onSelect={selectFeature} />
 
                     {plan.nodes.map((n) => {
                         const [x, z] = toScene(plan, [n.x, n.y]);
