@@ -35,8 +35,8 @@ function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; sh
             {/* Room area */}
             {showArea && (
                 <>
-                    <rect x={centerX - 95} y={centerY - 24} width={190} height={48} fill="var(--color-surface)" stroke="var(--color-border-strong)" strokeWidth={1} />
-                    <text x={centerX} y={centerY + 8} textAnchor="middle" fill="var(--color-dimension-text)" fontSize={22} fontWeight="bold" fontFamily="monospace">
+                    <rect x={centerX - 75} y={centerY - 19} width={150} height={38} fill="var(--color-surface)" stroke="var(--color-border-strong)" strokeWidth={1} />
+                    <text x={centerX} y={centerY + 8} textAnchor="middle" fill="var(--color-dimension-text)" fontSize={15} fontWeight="bold" fontFamily="monospace">
                         {formatArea(widthInMeters * heightInMeters, units)}
                     </text>
                 </>
@@ -45,10 +45,10 @@ function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; sh
             {/* Top width dimension */}
             <DimensionLine x1={left} y1={top - DIMENSION_OFFSET} x2={right} y2={top - DIMENSION_OFFSET} />
             <rect
-                x={centerX - 65}
-                y={top - DIMENSION_OFFSET - LABEL_GAP - 20}
-                width={130}
-                height={30}
+                x={centerX - 50}
+                y={top - DIMENSION_OFFSET - LABEL_GAP - 17}
+                width={100}
+                height={24}
                 rx={8}
                 fill="var(--color-dimension-soft)"
                 stroke={DIMENSION_COLOR}
@@ -59,7 +59,7 @@ function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; sh
                 y={top - DIMENSION_OFFSET - LABEL_GAP + 1}
                 textAnchor="middle"
                 fill="var(--color-dimension-text)"
-                fontSize={18}
+                fontSize={13}
                 fontWeight="bold"
                 fontFamily="monospace"
             >
@@ -85,10 +85,10 @@ function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; sh
                 strokeWidth={2}
             />
             <rect
-                x={heightLabelX - 15}
-                y={centerY - 65}
-                width={30}
-                height={130}
+                x={heightLabelX - 12}
+                y={centerY - 50}
+                width={24}
+                height={90}
                 rx={8}
                 fill="var(--color-dimension-soft)"
                 stroke={DIMENSION_COLOR}
@@ -99,7 +99,7 @@ function RoomLabel({ r, units, showArea }: { r: Rectangle; units: LengthUnit; sh
                 y={centerY}
                 textAnchor="middle"
                 fill="var(--color-dimension-text)"
-                fontSize={18}
+                fontSize={13}
                 fontWeight="bold"
                 fontFamily="monospace"
                 transform={`rotate(90 ${heightLabelX} ${centerY})`}

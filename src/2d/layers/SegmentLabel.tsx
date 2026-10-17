@@ -18,16 +18,16 @@ export default function SegmentLabel({ a, b, unit }: { a: Point; b: Point; unit:
     const y = (a[1] + b[1]) / 2 + (dx / len) * offset;
 
     const text = formatLength(len / PX_PER_METER, unit);
-    const boxWidth = text.length * 9 + 16;
+    const boxWidth = text.length * 7.5 + 12;
 
     return (
         <g transform={`translate(${x} ${y}) rotate(${angle})`}>
             <rect
                 x={-boxWidth / 2}
-                y={-12}
+                y={-10}
                 width={boxWidth}
-                height={24}
-                rx={6}
+                height={20}
+                rx={5}
                 fill="var(--color-dimension-soft)"
                 stroke="var(--color-dimension)"
                 strokeWidth={1.5}
@@ -36,7 +36,7 @@ export default function SegmentLabel({ a, b, unit }: { a: Point; b: Point; unit:
                 y={5}
                 textAnchor="middle"
                 fill="var(--color-dimension-text)"
-                fontSize={14}
+                fontSize={12}
                 fontWeight="bold"
                 fontFamily="monospace"
             >

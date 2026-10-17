@@ -67,12 +67,13 @@ type OverlayProps = {
     overlay: CablePlan | null;
     layers: CableLayers;
     units: LengthUnit;
+    showMeasurements: boolean;
     interactive: boolean;
     draggable: boolean;
 };
 
 // Rings, then room labels over them, then problem markers, nodes and hubs.
-export function CableOverlayLayer({ plan, overlay, layers, units, interactive, draggable }: OverlayProps) {
+export function CableOverlayLayer({ plan, overlay, layers, units, showMeasurements, interactive, draggable }: OverlayProps) {
     const focus = useEditor((s) => s.cableFocus);
     const setFocus = useEditor((s) => s.setCableFocus);
     const busy = useEditor((s) => s.cableBusy);
@@ -137,7 +138,7 @@ export function CableOverlayLayer({ plan, overlay, layers, units, interactive, d
 
             {/* Wall lengths inside each room. A drawn plan already has the
                 editor's own dimension lines, so it doesn't get a second set. */}
-            {layers.dimensions && plan.source?.kind !== "drawn" &&
+            {showMeasurements && layers.dimensions && plan.source?.kind !== "drawn" &&
                 plan.rooms.flatMap((r, i) =>
                     roomEdges(r).map((edge, k) => {
                         const a = toPlan(plan, edge.a);
@@ -171,15 +172,16 @@ export function CableOverlayLayer({ plan, overlay, layers, units, interactive, d
                 plan.rooms.map((r, i) => {
                     const [x, y] = toPlan(plan, r.label_at);
                     // Rooms with a node: which one, and which hub serves it.
-                    const detail = r.room_id
-                        ? `${formatArea(r.area_m2, units)} · ${r.room_id}${r.hub_id ? ` → ${r.hub_id}` : ""}`
-                        : formatArea(r.area_m2, units);
+                    const roomReference = r.room_id ? `${r.room_id}${r.hub_id ? ` → ${r.hub_id}` : ""}` : "";
+                    const detail = showMeasurements
+                        ? `${formatArea(r.area_m2, units)}${roomReference ? ` · ${roomReference}` : ""}`
+                        : roomReference;
                     return (
                         // Pushed up so the node marker (at the same deep point
                         // of the room, usually) stays readable below it.
                         <g key={i} transform={`translate(${x} ${y - 22})`} textAnchor="middle" opacity={r.hub_id ? opacity(r.hub_id) : 1}>
                             <text fontSize={15} fontWeight={600} fill="var(--color-cable-label)" {...halo}>{r.label}</text>
-                            <text y={15} fontSize={11} fill="var(--color-ink-muted)" {...halo}>{detail}</text>
+                            {detail && <text y={15} fontSize={11} fill="var(--color-ink-muted)" {...halo}>{detail}</text>}
                         </g>
                     );
                 })}
