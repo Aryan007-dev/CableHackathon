@@ -6,7 +6,7 @@
 // The file uses the solver's axes: metres, y UP. The editor's plan runs y
 // DOWN (SVG), and 3D uses z for the plan's y, so every point goes through
 // toPlan / toScene below and nowhere else.
-import { PX_PER_METER } from "../units";
+import { PX_PER_METER } from "../units.ts";
 
 export type XY = [number, number];
 
@@ -34,6 +34,25 @@ export interface CableNode {
     x: number;
     y: number;
 }
+
+export interface SolverDeviceDetail extends CableNode {
+    roomKind: RoomKind | null;
+    roomLabel: string | null;
+    hubId: string | null;
+    sequenceNumber: number | null;
+}
+
+const ROOM_KIND_LABELS: Record<RoomKind, string> = {
+    living: "Living room",
+    bedroom: "Bedroom",
+    kitchen: "Kitchen",
+    bathroom: "Bathroom",
+    storage: "Storage room",
+    stair: "Stair",
+    balcony: "Balcony",
+};
+
+export const solverDeviceTypeLabel = (kind: RoomKind | null) => `Solver device · ${kind ? ROOM_KIND_LABELS[kind] : "unassigned room"}`;
 
 export interface CableHub {
     hub_id: string;
@@ -240,6 +259,34 @@ export function hubOfNode(plan: CablePlan): Record<string, string> {
     return out;
 }
 
+/** Solver nodes are the generated room devices; derive their assignments and
+ * order from the selected solution instead of copying them into planFurniture. */
+export function solverDeviceDetails(plan: CablePlan | null): SolverDeviceDetail[] {
+    if (!plan) return [];
+    const roomById = new Map(plan.rooms.filter((room) => room.room_id).map((room) => [room.room_id!, room]));
+    const hubByNode: Record<string, string> = {};
+    const orderByNode: Record<string, number> = {};
+    for (const hub of plan.hubs) {
+        hub.sequence.forEach((id, index) => {
+            if (id !== hub.hub_id && id.startsWith("N")) {
+                hubByNode[id] = hub.hub_id;
+                orderByNode[id] = index;
+            }
+        });
+    }
+    return plan.nodes.map((node) => {
+        const room = roomById.get(node.room_id);
+        const index = orderByNode[node.node_id];
+        return {
+            ...node,
+            roomKind: room?.kind ?? null,
+            roomLabel: room?.label ?? null,
+            hubId: hubByNode[node.node_id] ?? null,
+            sequenceNumber: index == null ? null : index,
+        };
+    });
+}
+
 // Every way this plan was solved, ours excluded. Older files kept only the
 // naive rings (per hub), which become a naive alternative here.
 export function alternativesOf(plan: CablePlan): Partial<Record<Baseline, CableAlternative>> {
@@ -258,6 +305,13 @@ export function alternativesOf(plan: CablePlan): Partial<Record<Baseline, CableA
     };
 }
 
+/** Only affirmative solver validation can mark a route as valid. */
+export function isSolutionValidated(plan: CablePlan, id: SolutionId): boolean {
+    if (id === "ours") return plan.status === "solved" && !!plan.checks?.length && plan.checks.every((check) => check.passed);
+    const alternative = alternativesOf(plan)[id];
+    return alternative?.status === "solved" && alternative.valid;
+}
+
 // The plan as one solution draws it: its hubs, rings, metrics and problems,
 // and each room tinted by the hub that serves it there. The 2D and 3D views
 // draw whatever this returns, so every solution looks the same way.
@@ -271,8 +325,10 @@ export function solutionView(plan: CablePlan, id: SolutionId): CablePlan {
         rooms: plan.rooms.map((r) => (r.room_id ? { ...r, hub_id: hubOfRoom.get(r.room_id) ?? null } : r)),
         metrics: alt.metrics,
         problems: alt.problems,
-        status: alt.status === "solved" ? "solved" : "failed",
-        reason: alt.reason,
+        status: alt.status === "solved" && alt.valid ? "solved" : "failed",
+        reason: alt.status === "solved" && !alt.valid
+            ? alt.reason ?? "The solver's validation checks rejected this comparison."
+            : alt.reason,
         checks: undefined,
     };
 }
@@ -335,4 +391,32 @@ export function roomEdges(room: CableRoom, minLength = 1): RoomEdge[] {
         out.push({ a, b, length, inward: inside(probe, ring) ? n : [-n[0], -n[1]] });
     }
     return out;
+}
+
+/**
+ * Return only dimension lines whose complete, inset segment remains inside the
+ * room polygon. Some ResPlan room outlines are concave or contain holes; a
+ * locally inward-facing edge normal alone can put an annotation in empty
+ * space after the edge turns or narrows.
+ */
+export function roomDimensionEdges(
+    room: CableRoom,
+    minLength = 1,
+    inset = 10 / PX_PER_METER,
+    trim = 6 / PX_PER_METER,
+): RoomEdge[] {
+    const contains = (p: XY) => inside(p, room.shape.outer) && !room.shape.holes.some((hole) => inside(p, hole));
+    return roomEdges(room, minLength).filter((edge) => {
+        if (edge.length <= trim * 2) return false;
+        const count = Math.max(4, Math.ceil(edge.length / 0.2));
+        for (let i = 0; i <= count; i++) {
+            const t = trim + (edge.length - trim * 2) * i / count;
+            const p: XY = [
+                edge.a[0] + (edge.b[0] - edge.a[0]) * t / edge.length + edge.inward[0] * inset,
+                edge.a[1] + (edge.b[1] - edge.a[1]) * t / edge.length + edge.inward[1] * inset,
+            ];
+            if (!contains(p)) return false;
+        }
+        return true;
+    });
 }

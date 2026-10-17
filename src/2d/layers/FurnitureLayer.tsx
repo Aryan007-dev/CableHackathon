@@ -28,6 +28,7 @@ export default function FurnitureLayer({ furniture, pending }: FurnitureLayerPro
 
             {pending && pendingSymbol && (
                 <g
+                    data-export-ignore="true"
                     transform={`translate(${pending.at[0]} ${pending.at[1]}) rotate(${pending.rotation})`}
                     opacity={0.6}
                     pointerEvents="none"

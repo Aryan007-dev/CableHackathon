@@ -3,6 +3,7 @@ import type { ArchitecturalShape } from "./ArchitecturalSymbol";
 import FixtureSymbol from "./FixtureSymbol";
 import type { FixtureShape } from "./FixtureSymbol";
 import FurnitureSymbol from "./FurnitureSymbol";
+import ElectricalSymbol from "./ElectricalSymbol";
 import type { FurnitureSymbolDef } from "./symbolLibrary";
 
 type SymbolRendererProps = {
@@ -19,6 +20,10 @@ export default function SymbolRenderer({ symbol, w, d }: SymbolRendererProps) {
 
   if (symbol.renderer === "fixture") {
     return <FixtureSymbol shape={symbol.shape as FixtureShape} w={w} d={d} />;
+  }
+
+  if (symbol.renderer === "electrical") {
+    return <ElectricalSymbol shape={symbol.shape as "outlet" | "switch" | "ceilingLight" | "smokeAlarm" | "panel" | "dedicatedCircuit"} w={w} d={d} />;
   }
 
   return <FurnitureSymbol shape={symbol.shape} w={w} d={d} />;
