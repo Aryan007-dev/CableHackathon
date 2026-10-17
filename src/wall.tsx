@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useEffect, useRef } from "react"
 import { Text, Billboard, Edges } from "@react-three/drei"
 import { useFrame } from "@react-three/fiber"
 import * as THREE from "three"
@@ -61,6 +61,7 @@ function Wall({
   openings = [],
   animateIn = false,
   animateDelay = 0,
+  animationRunId = 0,
 }: {
   start: [number, number]
   end: [number, number]
@@ -71,11 +72,19 @@ function Wall({
   openings?: WallOpening[]
   animateIn?: boolean
   animateDelay?: number
+  animationRunId?: number
 }) {
   const units = useEditor((s) => s.units)
   const wallRef = useRef<THREE.Group>(null)
   const startedAt = useRef<number | null>(null)
   const finished = useRef(!animateIn)
+
+  useEffect(() => {
+    if (!animateIn) return
+    finished.current = false
+    startedAt.current = null
+    if (wallRef.current) wallRef.current.scale.y = 0
+  }, [animationRunId, animateIn])
 
   useFrame(({ clock }) => {
     const wall = wallRef.current

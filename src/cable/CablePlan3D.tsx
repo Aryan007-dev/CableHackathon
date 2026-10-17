@@ -109,9 +109,10 @@ function useWallMaterial(finish: Exclude<CableWallFinish, "plain">) {
     return material;
 }
 
-function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise = false, onRiseComplete }: {
+function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise = false, onRiseComplete, animationRunId = 0 }: {
     plan: CablePlan; shapes: CableShape[]; bottom: number; top: number; color: string; opacity?: number; material?: THREE.Material; rise?: boolean;
     onRiseComplete?: () => void;
+    animationRunId?: number;
 }) {
     const meshRef = useRef<THREE.Mesh>(null);
     const startedAt = useRef<number | null>(null);
@@ -125,7 +126,7 @@ function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise 
         startedAt.current = null;
         finished.current = !rise;
         if (meshRef.current) meshRef.current.scale.z = rise ? 0 : 1;
-    }, [geometry, rise]);
+    }, [animationRunId, geometry, rise]);
     useFrame(({ clock }) => {
         const mesh = meshRef.current;
         if (!mesh || finished.current) return;
@@ -146,16 +147,16 @@ function Prisms({ plan, shapes, bottom, top, color, opacity = 1, material, rise 
     );
 }
 
-function PlanWalls({ plan, doors, wallTop, wallColor, windowColor, material, rise = true, showWindowGlazing = false, onWallsReady }: {
+function PlanWalls({ plan, doors, wallTop, wallColor, windowColor, material, rise = true, showWindowGlazing = false, onWallsReady, animationRunId = 0 }: {
     plan: CablePlan; doors: CableShape[]; wallTop: number; wallColor: string; windowColor: string; material?: THREE.Material; rise?: boolean;
-    showWindowGlazing?: boolean; onWallsReady?: () => void;
+    showWindowGlazing?: boolean; onWallsReady?: () => void; animationRunId?: number;
 }) {
     return <>
-        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={wallColor} material={material} rise={rise} onRiseComplete={onWallsReady} />
-        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
-        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={wallColor} material={material} rise={rise} />
+        <Prisms plan={plan} shapes={plan.walls} bottom={0} top={wallTop} color={wallColor} material={material} rise={rise} onRiseComplete={onWallsReady} animationRunId={animationRunId} />
+        <Prisms plan={plan} shapes={doors} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} animationRunId={animationRunId} />
+        <Prisms plan={plan} shapes={plan.windows} bottom={0} top={Math.min(WINDOW_SILL, wallTop)} color={wallColor} material={material} rise={rise} animationRunId={animationRunId} />
         {showWindowGlazing && <Prisms plan={plan} shapes={plan.windows} bottom={WINDOW_SILL} top={Math.min(DOOR_TOP, wallTop)} color={windowColor} opacity={0.45} />}
-        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} />
+        <Prisms plan={plan} shapes={plan.windows} bottom={DOOR_TOP} top={wallTop} color={wallColor} material={material} rise={rise} animationRunId={animationRunId} />
     </>;
 }
 
@@ -311,10 +312,11 @@ function pathOf(plan: CablePlan, ring: XY[], y: number) {
 }
 
 // A tube along a path; enough segments that each corner stays sharp (~5 cm).
-function Tube({ path, radius, color, opacity = 1, onClick, reveal }: {
+function Tube({ path, radius, color, opacity = 1, onClick, reveal, animationRunId = 0 }: {
     path: THREE.CurvePath<THREE.Vector3>; radius: number; color: string; opacity?: number;
     onClick?: (e: ThreeEvent<MouseEvent>) => void;
     reveal?: { delay: number; duration: number };
+    animationRunId?: number;
 }) {
     const meshRef = useRef<THREE.Mesh>(null);
     const startedAt = useRef<number | null>(null);
@@ -333,7 +335,7 @@ function Tube({ path, radius, color, opacity = 1, onClick, reveal }: {
         startedAt.current = null;
         finished.current = !shouldReveal;
         geometry.setDrawRange(0, shouldReveal ? 0 : Infinity);
-    }, [geometry, shouldReveal, revealDelay, revealDuration]);
+    }, [animationRunId, geometry, shouldReveal, revealDelay, revealDuration]);
     useFrame(({ clock }) => {
         const mesh = meshRef.current;
         if (!reveal || !mesh || finished.current) return;
@@ -433,7 +435,7 @@ function Screenshot({ name }: { name: string }) {
     return null;
 }
 
-export default function CablePlan3D() {
+export default function CablePlan3D({ animationRunId = 0 }: { animationRunId?: number }) {
     const stored = useEditor((s) => s.doc.cablePlan);
     const layers = useEditor((s) => s.cableLayers);
     const setLayer = useEditor((s) => s.setCableLayer);
@@ -454,7 +456,7 @@ export default function CablePlan3D() {
     const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
     // A hub being dragged across the floor: where it is now, scene [x, z].
     const [drag, setDrag] = useState<{ hubId: string; from: XY; at: XY } | null>(null);
-    const [detailsReadyFor, setDetailsReadyFor] = useState<{ plan: CablePlan; finish: CableWallFinish; wallTop: number } | null>(null);
+    const [detailsReadyFor, setDetailsReadyFor] = useState<{ plan: CablePlan; finish: CableWallFinish; wallTop: number; animationRunId: number } | null>(null);
 
     const colors = useMemo(() => ({
         wall: themeColor("--color-cable-wall-3d", "#e9e6dc"),
@@ -498,8 +500,8 @@ export default function CablePlan3D() {
     const stageSpan = Math.max(plan.bounds.max_x - plan.bounds.min_x, plan.bounds.max_y - plan.bounds.min_y);
 
     const wallTop = layers.cutaway ? CUTAWAY_HEIGHT : WALL_HEIGHT;
-    const detailsReady = detailsReadyFor?.plan === plan && detailsReadyFor.finish === layers.wallFinish && detailsReadyFor.wallTop === wallTop;
-    const revealDetails = () => setDetailsReadyFor({ plan, finish: layers.wallFinish, wallTop });
+    const detailsReady = detailsReadyFor?.plan === plan && detailsReadyFor.finish === layers.wallFinish && detailsReadyFor.wallTop === wallTop && detailsReadyFor.animationRunId === animationRunId;
+    const revealDetails = () => setDetailsReadyFor({ plan, finish: layers.wallFinish, wallTop, animationRunId });
     const hubOf = hubOfNode(plan);
     const problems = plan.problems;
     const opacity = (hubId: string | null) => (focus && hubId !== focus ? DIM : 1);
@@ -595,11 +597,11 @@ export default function CablePlan3D() {
                         </>
                     )}
                     {!hasManualWalls && (layers.wallFinish !== "plain" ? (
-                        <Suspense fallback={<PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} rise={false} />}>
-                            <TexturedPlanWalls key={layers.wallFinish} finish={layers.wallFinish} plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} />
+                        <Suspense fallback={<PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} rise={false} animationRunId={animationRunId} />}>
+                            <TexturedPlanWalls key={layers.wallFinish} finish={layers.wallFinish} plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} animationRunId={animationRunId} />
                         </Suspense>
                     ) : (
-                        <PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} />
+                        <PlanWalls plan={plan} doors={doors} wallTop={wallTop} wallColor={colors.wall} windowColor={colors.window} showWindowGlazing={detailsReady} onWallsReady={revealDetails} animationRunId={animationRunId} />
                     ))}
                     {!hasManualWalls && detailsReady && <DoorLeaves plan={plan} doors={doors} height={wallTop} />}
                 </>
@@ -644,6 +646,7 @@ export default function CablePlan3D() {
                                     color={faint ? colors.naive : CABLE_COLOR_3D}
                                     opacity={opacity(hub.hub_id) * (faint ? 0.6 : 1)}
                                     onClick={faint ? undefined : pick(hub.hub_id)}
+                                    animationRunId={animationRunId}
                                     reveal={faint ? undefined : { delay: 2.6 + ringIndex * 1.7, duration: 1.5 }}
                                 />
                                 {layers.animate && !faint && opacity(hub.hub_id) === 1 && (

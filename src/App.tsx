@@ -20,6 +20,7 @@ const App = () => {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+  const [sceneActivation, setSceneActivation] = useState(0);
  
 
   // Undo / redo from the keyboard, in both views: Cmd/Ctrl+Z, and
@@ -44,6 +45,7 @@ const App = () => {
     // Entering 3D builds the walls from the 2D plan first.
     if (next === "3d" && view === "2d") {
       useEditor.getState().buildRoomFromPlan();
+      setSceneActivation((activation) => activation + 1);
     }
     setView(next);
   };
@@ -63,7 +65,12 @@ const App = () => {
       <main className="editor-workspace">
         
         <section className="editor-viewport">
-          {view === "2d" ? <FloorPlan /> : <Scene />}
+          <div className={`editor-view-layer${view === "2d" ? " is-active" : ""}`}>
+            {view === "2d" && <FloorPlan />}
+          </div>
+          <div className={`editor-view-layer${view === "3d" ? " is-active" : ""}`} aria-hidden={view !== "3d"}>
+            <Scene active={view === "3d"} animationRunId={sceneActivation} />
+          </div>
           {/* The imported cable plan: metrics, layers, rings, export. */}
           <CablePanel view={view} />
           {/* Properties of the selected 3D object; hidden while nothing is selected. */}
