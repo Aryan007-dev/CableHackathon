@@ -95,7 +95,13 @@ export type SymbolShape =
 
   // Entertainment / miscellaneous
   | "piano"
-  | "fireplace";
+  | "fireplace"
+  | "outlet"
+  | "switch"
+  | "ceilingLight"
+  | "smokeAlarm"
+  | "panel"
+  | "dedicatedCircuit";
 
 export const FURNITURE_CATEGORIES = [
   "Living",
@@ -107,6 +113,7 @@ export const FURNITURE_CATEGORIES = [
   "Decor",
   "Architecture",
   "Fixtures",
+  "Electrical",
 ] as const;
 
 export type FurnitureCategory = (typeof FURNITURE_CATEGORIES)[number];
@@ -120,7 +127,7 @@ export interface FurnitureSymbolDef {
   depth: number;
   pieceTypes?: PieceType[];
   height: number;
-  renderer?: "furniture" | "architectural" | "fixture";
+  renderer?: "furniture" | "architectural" | "fixture" | "electrical";
 }
 
 /**
@@ -918,6 +925,19 @@ export const FURNITURE_SYMBOLS: FurnitureSymbolDef[] = [
     depth: 0.45,
     height: 1.0,
   },
+  { id: "electrical-outlet", label: "Outlet / receptacle", category: "Electrical", shape: "outlet", width: 0.16, depth: 0.16, height: 0.3, renderer: "electrical" },
+  { id: "electrical-switch", label: "Light switch", category: "Electrical", shape: "switch", width: 0.16, depth: 0.16, height: 0.12, renderer: "electrical" },
+  { id: "electrical-ceiling-light", label: "Ceiling light", category: "Electrical", shape: "ceilingLight", width: 0.3, depth: 0.3, height: 0.05, renderer: "electrical" },
+  { id: "electrical-smoke-alarm", label: "Smoke alarm", category: "Electrical", shape: "smokeAlarm", width: 0.22, depth: 0.22, height: 0.08, renderer: "electrical" },
+  { id: "electrical-panel", label: "Electrical panel", category: "Electrical", shape: "panel", width: 0.45, depth: 0.18, height: 0.6, renderer: "electrical" },
+  { id: "circuit-range", label: "Dedicated circuit · range", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-oven", label: "Dedicated circuit · oven", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-dishwasher", label: "Dedicated circuit · dishwasher", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-fridge", label: "Dedicated circuit · refrigerator", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-washer", label: "Dedicated circuit · washer", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-dryer", label: "Dedicated circuit · dryer", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-water-heater", label: "Dedicated circuit · water heater", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
+  { id: "circuit-hvac", label: "Dedicated circuit · HVAC", category: "Electrical", shape: "dedicatedCircuit", width: 0.2, depth: 0.2, height: 0.1, renderer: "electrical" },
 ];
 
 export const SYMBOL_BY_ID: Record<string, FurnitureSymbolDef> = Object.fromEntries(

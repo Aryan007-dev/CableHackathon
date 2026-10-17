@@ -1,5 +1,10 @@
 
 import "./ToolSideBar.css";
+import { Download, FileText } from "lucide-react";
+import { useEditor } from "../store";
+import { exportDataset, exportPdf, exportPng } from "../cable/exportPlan";
+import { getElectricalSchedule } from "./electricalPlan";
+import { solutionView, solverDeviceDetails, solverDeviceTypeLabel } from "../cable/cablePlan";
 
 export type Tool =
     | "select"
@@ -57,6 +62,23 @@ export default function ToolSideBar({
     onToolChange,
     libraryOpen = false,
 }: ToolSideBarProps) {
+    const planFurniture = useEditor((s) => s.doc.planFurniture);
+    const cablePlan = useEditor((s) => s.doc.cablePlan);
+    const cableSolution = useEditor((s) => s.cableLayers.solution);
+    const planReady = useEditor((s) => s.doc.cablePlan != null || s.doc.planWalls.length > 0 || s.doc.floorPlan.length > 1);
+    const projectName = useEditor((s) => s.currentProjectName ?? "GridMind electrical plan");
+    const electricalSchedule = getElectricalSchedule(planFurniture);
+    const { total: electricalTotal, byType: electricalCounts } = electricalSchedule;
+    const solverPlan = cablePlan ? solutionView(cablePlan, cableSolution) : null;
+    const generatedDevices = solverDeviceDetails(solverPlan);
+    const generatedTypes = new Map<string, number>();
+    const generatedPanels = new Map<string, number>();
+    generatedDevices.forEach((device) => {
+        const label = solverDeviceTypeLabel(device.roomKind);
+        generatedTypes.set(label, (generatedTypes.get(label) ?? 0) + 1);
+        if (device.hubId) generatedPanels.set(device.hubId, (generatedPanels.get(device.hubId) ?? 0) + 1);
+    });
+    const totalDevices = electricalTotal + generatedDevices.length;
     const navigationTools = [
         { id: "select" as const, label: "Select", shortcut: "V" },
         { id: "pan" as const, label: "Pan", shortcut: "H" },
@@ -122,6 +144,41 @@ export default function ToolSideBar({
                         </div>
                     </section>
                 ))}
+            </div>
+
+            <section className="tool-sidebar__schedule" aria-label="Electrical device schedule">
+                <div className="tool-sidebar__schedule-title">
+                    <strong>Electrical schedule</strong>
+                    <span>{totalDevices} total</span>
+                </div>
+                {totalDevices === 0 ? (
+                    <p>No generated devices or manual electrical placements.</p>
+                ) : (
+                    <>
+                        <ul>
+                            {[...generatedTypes].map(([label, count]) => (
+                                <li key={label}><span>{label}</span><strong>{count}</strong></li>
+                            ))}
+                            {electricalCounts.map(({ label, count }) => (
+                                <li key={label}><span>{label}</span><strong>{count}</strong></li>
+                            ))}
+                        </ul>
+                        {generatedPanels.size > 0 && <div className="tool-sidebar__panel-counts" aria-label="Devices assigned per panel">
+                            {[...generatedPanels].map(([hubId, count]) => <span key={hubId}>{hubId}: {count} device{count === 1 ? "" : "s"}</span>)}
+                        </div>}
+                    </>
+                )}
+            </section>
+            <div className="tool-sidebar__exports" aria-label="Plan exports">
+                <button type="button" disabled={!planReady} onClick={() => void exportPng(projectName)}>
+                    <Download size={15} /> Export PNG
+                </button>
+                <button type="button" disabled={!planReady} onClick={() => void exportPdf(projectName)}>
+                    <FileText size={15} /> Export PDF
+                </button>
+                <button type="button" disabled={!planReady} onClick={() => void exportDataset(projectName)}>
+                    <Download size={15} /> Dataset JSON
+                </button>
             </div>
         </aside>
     );

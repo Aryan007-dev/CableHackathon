@@ -13,6 +13,8 @@ import type { CableLayers, CablePlan } from "./cable/cablePlan";
 // (OPENING_DEFAULTS is only read inside a function body), so every binding is
 // initialised before anything first uses it.
 import { planToScene } from "./2d/planToScene";
+import { addPlanFurnitureItem, normalizePlanFurniture } from "./2d/electricalPlan";
+import { SYMBOL_BY_ID } from "./2d/symbolLibrary";
 
 // Unit preference is remembered per browser. Storage can throw (private
 // mode, blocked site data), so fall back to metres.
@@ -175,7 +177,7 @@ interface LightNode extends BaseNode {
 
 export type SceneNode = FurnitureNode | WallNode | LightNode | FloorNode|PlaceHolderNode;
 
-interface SceneDocument {
+export interface SceneDocument {
     id: string;
 
     // Existing freehand floor-plan points.
@@ -217,7 +219,7 @@ export function normalizeDoc(raw: SceneDocument & { rectangles?: Rectangle[] }):
         floorPlan: raw.floorPlan ?? [],
         planWalls,
         openings: fitOpenings(raw.openings ?? [], planWalls),
-        planFurniture: raw.planFurniture ?? [],
+        planFurniture: normalizePlanFurniture(raw.planFurniture),
         cablePlan: raw.cablePlan ?? null,
     };
 }
@@ -503,7 +505,7 @@ export const useEditor = create<EditorState>((set, get) => {
 
         addPlanFurniture: (item: PlanFurniture) =>
             commit((d) => {
-                d.planFurniture.push(item);
+                d.planFurniture = addPlanFurnitureItem(d.planFurniture, item);
             }),
 
 
@@ -601,6 +603,9 @@ export const useEditor = create<EditorState>((set, get) => {
                 //    one matches it, otherwise a labelled placeholder box. The
                 //    node reuses the 2D piece's id, so they stay matched.
                 for (const piece of planFurniture) {
+                    // Electrical symbols are annotated in the 2D plan; avoid
+                    // turning them into arbitrary furniture boxes in 3D.
+                    if (SYMBOL_BY_ID[piece.symbolId]?.category === "Electrical") continue;
                     d.nodes[piece.id] = planToScene(piece);
                 }
             });
