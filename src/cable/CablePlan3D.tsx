@@ -17,7 +17,7 @@ import { moveHub } from "./cableActions";
 import { themeColor } from "../themeColor";
 import { formatArea, formatLength } from "../units";
 import type { LengthUnit } from "../units";
-import { frameKey, fromScene, hubOfNode, hubToken, ringsToDraw, roomEdges, solutionView, toScene } from "./cablePlan";
+import { frameKey, fromScene, hubOfNode, hubToken, ringsToDraw, roomDimensionEdges, solutionView, toScene } from "./cablePlan";
 import type { CableFloor, CableHeight, CablePlan, CableRoom, CableShape, XY } from "./cablePlan";
 
 const WALL_HEIGHT = 2.7;
@@ -94,7 +94,7 @@ function RoomDimensions({ plan, room, units, color }: { plan: CablePlan; room: C
     const y = 0.015;
     return (
         <>
-            {roomEdges(room).map((edge, i) => {
+            {roomDimensionEdges(room, 1, 0.18, 0.12).map((edge, i) => {
                 const [ax, az] = toScene(plan, edge.a);
                 const [bx, bz] = toScene(plan, edge.b);
                 // Into the room, in scene axes (the plan's y is the scene's -z).

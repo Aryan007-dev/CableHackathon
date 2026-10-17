@@ -3,7 +3,7 @@ import { AlertCircle, Check, ChevronDown, ChevronUp, Download, Loader2, X } from
 
 import { useEditor } from "../store";
 import { downloadJson, exportPdf, exportPng, exportSvg } from "./exportPlan";
-import { alternativesOf, hubVar, SOLUTION_LABELS, solutionView } from "./cablePlan";
+import { alternativesOf, hubVar, isSolutionValidated, SOLUTION_LABELS, solutionView } from "./cablePlan";
 import type { CableFloor, CableHeight, CableLayers, CableMetrics, CablePlan, SolutionId } from "./cablePlan";
 import CableStory from "./CableStory";
 import styles from "./CablePanel.module.css";
@@ -34,8 +34,8 @@ function columnsOf(plan: CablePlan): Column[] {
         id: "ours",
         label: SOLUTION_LABELS.ours,
         metrics: plan.metrics,
-        valid: plan.status !== undefined ? plan.status === "solved" && (plan.checks ?? []).every((c) => c.passed) : plan.hubs.length > 0,
-        reason: plan.reason ?? null,
+        valid: isSolutionValidated(plan, "ours"),
+        reason: plan.reason ?? (!plan.checks?.length ? "No validation report was included; validity is unverified." : null),
     };
     const others = Object.entries(alternativesOf(plan)).map(([id, alt]) => ({
         id: id as SolutionId,
@@ -93,6 +93,7 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
     const shown = plan ? solutionView(plan, layers.solution) : null;
     const m = shown?.metrics ?? {};
     const columns = plan ? columnsOf(plan) : [];
+    const shownValid = plan ? isSolutionValidated(plan, layers.solution) : false;
     const best = (key: keyof CableMetrics) =>
         Math.min(...columns.filter((c) => c.valid && c.metrics[key] != null).map((c) => c.metrics[key] as number));
 
@@ -115,12 +116,11 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                 <button type="button" className={styles.titleBtn} onClick={() => setOpen(!open)} aria-expanded={open}>
                     {open ? <ChevronDown {...ICON} /> : <ChevronUp {...ICON} />}
                     <span className={styles.title}>{title}</span>
-                    {plan?.status === "solved" && plan.checks && (
-                        <span className={styles.badge} data-ok={failed.length === 0}>
-                            {failed.length === 0 ? <><Check size={12} strokeWidth={2.5} /> valid</> : `${failed.length} rule${failed.length > 1 ? "s" : ""} broken`}
+                    {shown && (
+                        <span className={styles.badge} data-ok={shownValid}>
+                            {shownValid ? <><Check size={12} strokeWidth={2.5} /> valid</> : layers.solution !== "ours" ? `${SOLUTION_LABELS[layers.solution]} invalid` : plan?.status === "solved" && plan.checks?.length ? `${failed.length} rule${failed.length === 1 ? "" : "s"} broken` : plan?.status == null || plan.status === "solved" ? "unverified" : shown.status ?? "not solved"}
                         </span>
                     )}
-                    {plan && plan.status && plan.status !== "solved" && <span className={styles.badge} data-ok={false}>{plan.status}</span>}
                 </button>
             </header>
 
@@ -144,6 +144,12 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                     {plan.status && plan.status !== "solved" && plan.reason && <p className={styles.note}>{plan.reason}</p>}
                     {plan.warning && <p className={styles.note}>{plan.warning}</p>}
                     {plan.notice && <p className={styles.notice}>{plan.notice}</p>}
+                    {layers.solution === "ours" && plan.status === "solved" && !plan.checks?.length && <p className={styles.note} role="status">
+                        This plan has no validation report. Its nodes and routes are shown as supplied, but are not marked valid.
+                    </p>}
+                    {layers.solution !== "ours" && shown && !shownValid && <p className={styles.note} role="alert">
+                        {alternativesOf(plan)[layers.solution]?.reason ?? "This comparison failed the solver validation checks. Its route is shown for inspection and is not a valid solution."}
+                    </p>}
 
                     {plan.extended && plan.extended.length > 0 && (
                         <p className={styles.notice} title="The deck can't serve a room over 100 m²; the organisers leave such plans out">
@@ -315,7 +321,7 @@ export default function CablePanel({ view }: { view: "2d" | "3d" }) {
                     )}
 
                     {/* Every hard rule, as our checker sees it. */}
-                    {plan.checks && (
+                    {plan.checks && layers.solution === "ours" && (
                         <details className={styles.section}>
                             <summary>
                                 {failed.length === 0 ? `All ${plan.checks.length} rule checks pass` : `${failed.length} of ${plan.checks.length} rule checks fail`}

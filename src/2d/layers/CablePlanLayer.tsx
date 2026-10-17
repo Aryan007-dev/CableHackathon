@@ -5,7 +5,7 @@ import { formatArea, formatLength } from "../../units";
 import type { LengthUnit } from "../../units";
 import { moveHub } from "../../cable/cableActions";
 import { insidePolygon } from "../planGeometry";
-import { fromPlan, hubOfNode, hubVar, ringsToDraw, roomEdges, shapePath, toPlan } from "../../cable/cablePlan";
+import { fromPlan, hubOfNode, hubVar, ringsToDraw, roomDimensionEdges, shapePath, solverDeviceDetails, toPlan } from "../../cable/cablePlan";
 import type { CableLayers, CablePlan, CableShape, XY } from "../../cable/cablePlan";
 import "../../cable/cable.css";
 
@@ -81,6 +81,7 @@ export function CableOverlayLayer({ plan, overlay, layers, units, interactive, d
     const [drag, setDrag] = useState<{ hubId: string; from: XY; at: XY } | null>(null);
 
     const hubOf = hubOfNode(plan);
+    const deviceDetails = new Map(solverDeviceDetails(plan).map((device) => [device.node_id, device]));
     const rings = ringsToDraw(plan, overlay);
     const problems = plan.problems;
     const opacity = (hubId: string | null) => (focus && hubId !== focus ? DIM : 1);
@@ -135,11 +136,20 @@ export function CableOverlayLayer({ plan, overlay, layers, units, interactive, d
                     );
                 })}
 
+            {/* Keep opaque obstacle geometry crisp above route strokes. Routes
+                are solver-validated in world coordinates; drawing them above
+                these shapes made close, legal runs look like wall crossings. */}
+            {layers.rooms && <g pointerEvents="none">
+                <Shapes plan={plan} shapes={plan.walls} fill="var(--color-cable-wall)" stroke="var(--color-cable-wall)" />
+                <Shapes plan={plan} shapes={plan.windows} fill="var(--color-cable-window)" stroke="var(--color-cable-wall)" />
+                <Shapes plan={plan} shapes={plan.front_doors} fill="var(--color-canvas)" stroke="var(--color-cable-wall)" />
+            </g>}
+
             {/* Wall lengths inside each room. A drawn plan already has the
                 editor's own dimension lines, so it doesn't get a second set. */}
             {layers.dimensions && plan.source?.kind !== "drawn" &&
                 plan.rooms.flatMap((r, i) =>
-                    roomEdges(r).map((edge, k) => {
+                    roomDimensionEdges(r).map((edge, k) => {
                         const a = toPlan(plan, edge.a);
                         const b = toPlan(plan, edge.b);
                         const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -221,12 +231,20 @@ export function CableOverlayLayer({ plan, overlay, layers, units, interactive, d
                     {plan.nodes.map((n) => {
                         const [x, y] = toPlan(plan, [n.x, n.y]);
                         const hubId = hubOf[n.node_id] ?? null;
+                        const device = deviceDetails.get(n.node_id);
+                        const deviceColor = hubId ? hubVar(hubId) : "var(--color-ink-muted)";
                         return (
                             <g key={n.node_id} transform={`translate(${x} ${y})`} opacity={opacity(hubId)}
                                 pointerEvents={interactive ? "all" : "none"} style={interactive ? { cursor: "pointer" } : undefined}
                                 onPointerDown={(e) => { own(e); toggleFocus(hubId); }}>
-                                <circle r={6} fill="var(--color-surface)" stroke={hubVar(hubId)} strokeWidth={3} />
-                                <text x={9} y={4} fontSize={10} fontWeight={600} fill="var(--color-cable-label)" {...halo}>{n.node_id}</text>
+                                <title>{`${n.node_id} · ${device?.roomLabel ?? n.room_id}${hubId ? ` · ${hubId}` : " · unassigned"}${device?.sequenceNumber ? ` · sequence ${device.sequenceNumber}` : ""}`}</title>
+                                <circle r={9} fill="var(--color-surface)" stroke={deviceColor} strokeWidth={2.5} />
+                                <rect x={-3} y={-3} width={6} height={6} rx={1} fill={deviceColor} />
+                                {device?.sequenceNumber != null && <g transform="translate(7 -8)">
+                                    <circle r={5.5} fill={deviceColor} stroke="var(--color-surface)" strokeWidth={1.5} />
+                                    <text y={2.7} textAnchor="middle" fontSize={7} fontWeight={700} fill="var(--color-accent-contrast)">{device.sequenceNumber}</text>
+                                </g>}
+                                <text x={12} y={4} fontSize={10} fontWeight={700} fill="var(--color-cable-label)" {...halo}>{n.node_id}</text>
                             </g>
                         );
                     })}

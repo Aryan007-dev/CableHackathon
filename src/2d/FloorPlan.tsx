@@ -7,6 +7,7 @@ import FurnitureLibraryPanel from "./FurnitureLibraryPanel";
 import ToolSideBar from "./ToolSideBar";
 import type { Tool } from "./ToolSideBar";
 import { SYMBOL_BY_ID } from "./symbolLibrary";
+import { createElectricalPlacement } from "./electricalPlan";
 import { HIT_PX, PLAN_GRID } from "./planConstants";
 import {
     distance,
@@ -364,17 +365,13 @@ function FloorPlan() {
         // into Select with it picked, ready to move or rotate.
         if (pendingSymbol) {
             const symbol = SYMBOL_BY_ID[pendingSymbol.symbolId];
-            const [x, y] = snapPoint(toWorld(e));
+            const [x, y] = symbol.category === "Electrical" ? toWorld(e) : snapPoint(toWorld(e));
             const id = crypto.randomUUID();
-            addPlanFurniture({
-                id,
-                symbolId: symbol.id,
-                x,
-                y,
-                rotation: pendingSymbol.rotation,
-                width: symbol.width,
-                depth: symbol.depth,
-            });
+            const placement = symbol.category === "Electrical"
+                ? createElectricalPlacement(symbol.id, id, x, y, pendingSymbol.rotation)
+                : { id, symbolId: symbol.id, x, y, rotation: pendingSymbol.rotation, width: symbol.width, depth: symbol.depth };
+            if (!placement) return;
+            addPlanFurniture(placement);
             setPendingSymbol(null);
             setPlacementPoint(null);
             setActiveTool("select");
@@ -591,6 +588,11 @@ function FloorPlan() {
                         activeSymbolId={pendingSymbol?.symbolId ?? null}
                         onPick={(symbolId) => {
                             setPendingSymbol({ symbolId, rotation: 0 });
+                            // Free the canvas from the library overlay and route
+                            // the next click through placement, even if Pan was
+                            // the previously active tool.
+                            setLibraryOpen(false);
+                            setActiveTool("select");
                             setSelection([]);
                         }}
                         onClose={() => {
@@ -641,7 +643,7 @@ function FloorPlan() {
 
                         {/* FREEHAND PREVIEW */}
                         {liveWall && (
-                            <line
+                            <line data-export-ignore="true"
                                 x1={liveWall[0][0]}
                                 y1={liveWall[0][1]}
                                 x2={liveWall[1][0]}
@@ -656,11 +658,11 @@ function FloorPlan() {
                         {/* Angle of the wall being drawn, measured from the
                             previous wall when there is one. */}
                         {liveWall && (
-                            <AngleIndicator
+                            <g data-export-ignore="true"><AngleIndicator
                                 from={liveWall[0]}
                                 to={liveWall[1]}
                                 previous={points.length >= 2 ? points[points.length - 2] : null}
-                            />
+                            /></g>
                         )}
 
                         <LengthLabels
@@ -697,7 +699,7 @@ function FloorPlan() {
 
                         {/* RECTANGLE IN PROGRESS */}
                         {activeTool === "rectangle" && rectStart && rectCurrent && (
-                            <rect
+                            <rect data-export-ignore="true"
                                 x={Math.min(rectStart[0], rectCurrent[0])}
                                 y={Math.min(rectStart[1], rectCurrent[1])}
                                 width={Math.abs(rectCurrent[0] - rectStart[0])}
@@ -720,7 +722,7 @@ function FloorPlan() {
                         ))}
 
                         {activeTool === "select" && (
-                            <SelectionLayer
+                            <g data-export-ignore="true"><SelectionLayer
                                 plan={plan}
                                 selection={activeSelection}
                                 hoverTarget={hoverTarget}
@@ -728,12 +730,12 @@ function FloorPlan() {
                                 scale={scale}
                                 rotateHandle={rotateHandle}
                                 marquee={marquee}
-                            />
+                            /></g>
                         )}
 
                         {/* HOVER POINT (drawing tools only) */}
                         {hover && (activeTool === "wall" || activeTool === "rectangle") && !spaceHeld && !pendingSymbol && (
-                            <circle cx={hover[0]} cy={hover[1]} r={4} fill="none" stroke="var(--color-ink)" strokeWidth={2} />
+                            <circle data-export-ignore="true" cx={hover[0]} cy={hover[1]} r={4} fill="none" stroke="var(--color-ink)" strokeWidth={2} />
                         )}
                     </g>
                 </svg>

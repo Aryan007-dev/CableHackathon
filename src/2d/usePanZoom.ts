@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Point } from "./planGeometry";
+import { screenToPlanPoint } from "./electricalPlan";
 import { isTypingInField } from "./usePlanKeyboard";
 
 type SvgPointerEvent = React.PointerEvent<SVGSVGElement>;
@@ -104,7 +105,7 @@ export function usePanZoom() {
         const screenX = e.clientX - svgRect.left;
         const screenY = e.clientY - svgRect.top;
 
-        return [(screenX - pan[0]) / scale, (screenY - pan[1]) / scale];
+        return screenToPlanPoint([screenX, screenY], pan, scale);
     };
 
     const startPan = (e: SvgPointerEvent) => {

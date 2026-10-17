@@ -2,6 +2,7 @@
 // how selected things move, rotate, flip and get deleted. Pure functions that
 // take a plan snapshot and return a new one; the component commits the result.
 import { fitOpenings } from "../store";
+import { removePlanFurnitureItems } from "./electricalPlan";
 import type { Opening, PlanFurniture, PlanWall } from "../store";
 import { PX_PER_METER } from "../units";
 import { HIT_PX, WALL_EDGE_WIDTH, WALL_WIDTH } from "./planConstants";
@@ -249,7 +250,7 @@ export const deleteItems = (items: PlanItem[], plan: PlanSnapshot): PlanSnapshot
                 !cornersToRemove.has(pointKey(w.b))
         ),
         openings: plan.openings.filter((o) => !openingsToRemove.has(o.id)),
-        furniture: plan.furniture.filter((f) => !furnitureToRemove.has(f.id)),
+        furniture: removePlanFurnitureItems(plan.furniture, furnitureToRemove),
     };
 };
 
