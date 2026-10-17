@@ -147,6 +147,7 @@ export interface CablePlanSummary {
 export type CableHeight = "floor" | "skirting" | "ceiling";
 export type CableFloor = "zones" | "wood" | "tiles";
 export type CableWallFinish = "plain" | "cladding" | "beige" | "concrete" | "painted";
+export type CablePointHighlight = "bends" | "crossings" | "overlaps" | null;
 
 // How an imported plan is drawn (session state, not saved).
 export interface CableLayers {
@@ -161,6 +162,7 @@ export interface CableLayers {
     height: CableHeight; // 3D: where the cable runs
     floor: CableFloor; // 3D: floor finish (zones = tinted by hub)
     wallFinish: CableWallFinish; // 3D: plain walls or a downloaded wall finish
+    pointHighlight: CablePointHighlight; // 3D: emphasize one kind of point on the focused hub
     dimensions: boolean; // each room's wall lengths
 }
 
@@ -176,6 +178,7 @@ export const DEFAULT_LAYERS: CableLayers = {
     height: "floor",
     floor: "wood",
     wallFinish: "plain",
+    pointHighlight: null,
     dimensions: true,
 };
 
