@@ -5,10 +5,7 @@ floor plan, choose how many hubs there are and where, which rooms each hub
 serves, the order each hub's ring visits its nodes, and the physical cable
 route of every closed ring.
 
-The rulebook is `../Cable Ring Challenge - Problem Statement4.pptx` (8 slides
-plus speaker notes). Where this document and the deck disagree, the deck wins.
-The first text brief we received is out of date: it said 20 devices per panel,
-while the deck says **5 nodes per hub**.
+
 
 ---
 

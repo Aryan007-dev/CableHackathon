@@ -1,9 +1,60 @@
-import { ArrowRight, Box, CircleDot, MoveUpRight, Square } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CircleDot, MoveUpRight, Pause, Play } from "lucide-react";
 import HeroBlueprint from "./HeroBlueprint";
 import LandingStory from "./LandingStory";
 import "./LandingPage.css";
 
 type Props = { onOpenEditor: () => void };
+
+const planVideo = `${import.meta.env.BASE_URL}landing/plan-494-3d-build.mp4`;
+const planPoster = `${import.meta.env.BASE_URL}landing/plan-494-3d-poster.jpg`;
+const floorplanImage = `${import.meta.env.BASE_URL}landing/floorplan-builder.webp`;
+const routedPlanImage = `${import.meta.env.BASE_URL}landing/plan-14399-2d.webp`;
+
+function PlanBuildPreview() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotion = () => {
+      if (motionPreference.matches) {
+        video.pause();
+        setPlaying(false);
+      } else {
+        video.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      }
+    };
+    syncMotion();
+    motionPreference.addEventListener("change", syncMotion);
+    return () => motionPreference.removeEventListener("change", syncMotion);
+  }, []);
+
+  const togglePlayback = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    else {
+      video.pause();
+      setPlaying(false);
+    }
+  };
+
+  return <div className="landing-preview-slot landing-preview-slot-3d">
+    <video ref={videoRef} className="landing-preview-video" muted loop playsInline preload="metadata"
+      poster={planPoster} aria-label="Plan 494 walls and cable rings forming in 3D">
+      <source src={planVideo} type="video/mp4" />
+    </video>
+    <span className="landing-preview-video-label">PLAN 494 / 3D BUILD</span>
+    <span className="landing-slot-index">02 / SPATIAL VIEW</span>
+    <button type="button" className="landing-preview-video-control" onClick={togglePlayback}
+      aria-label={playing ? "Pause 3D plan animation" : "Play 3D plan animation"}>
+      {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+    </button>
+  </div>;
+}
 
 export default function LandingPage({ onOpenEditor }: Props) {
   return (
@@ -40,33 +91,43 @@ export default function LandingPage({ onOpenEditor }: Props) {
           <HeroBlueprint />
         </section>
 
-        <section className="landing-preview" id="plan-preview" aria-label="2D and 3D plan preview spaces">
+        <section className="landing-preview" id="plan-preview" aria-label="2D and 3D plan previews">
             <div className="landing-preview-top">
               <div className="landing-preview-title"><span className="landing-preview-status" /> <span>PLAN VIEWS</span><span className="landing-preview-separator">/</span><span>2D + 3D</span></div>
-              <span className="landing-preview-caption">ONE ROUTE · TWO PERSPECTIVES</span>
+              <span className="landing-preview-caption">TWO ROUTED PLAN EXAMPLES</span>
             </div>
             <div className="landing-preview-stage">
-              {/* Replace each slot with the finished 2D or 3D plan visual. */}
               <div className="landing-preview-slot landing-preview-slot-2d">
-                <div className="landing-slot-icon"><Square size={31} strokeWidth={1.25} /></div>
-                <strong>2D floor plan</strong>
-                <span>Plan preview</span>
+                <img className="landing-preview-image" src={routedPlanImage}
+                  alt="Plan 14399 in the 2D editor, with two hubs and their cable routes"
+                  loading="lazy" decoding="async" />
+                <span className="landing-preview-image-label">PLAN 14399 / 2D ROUTE</span>
                 <span className="landing-slot-index">01 / TOP VIEW</span>
               </div>
-              <div className="landing-preview-slot landing-preview-slot-3d">
-                <div className="landing-slot-icon"><Box size={34} strokeWidth={1.2} /></div>
-                <strong>3D cable plan</strong>
-                <span>Scene preview</span>
-                <span className="landing-slot-index">02 / SPATIAL VIEW</span>
-              </div>
+              <PlanBuildPreview />
             </div>
             <div className="landing-preview-bottom">
               <span><span className="landing-bottom-dot landing-bottom-dot-2d" /> Plan the route</span>
               <span><span className="landing-bottom-dot landing-bottom-dot-3d" /> See it in space</span>
-              <span className="landing-preview-ready">TWO VIEWS / ONE PLAN</span>
+              <span className="landing-preview-ready">2D ROUTE / 3D BUILD</span>
             </div>
         </section>
-        <div className="landing-footnote"><span>01 / PLAN</span><span>02 / ROUTE</span><span>03 / VALIDATE</span><span className="landing-footnote-end">One plan. Two ways to see the network.</span></div>
+        <div className="landing-footnote"><span>01 / PLAN</span><span>02 / ROUTE</span><span>03 / VALIDATE</span><span className="landing-footnote-end">From a floorplan to a routed network.</span></div>
+
+        <section className="landing-create" id="build-floorplan" aria-labelledby="landing-create-title">
+          <div className="landing-create-copy">
+            <p className="landing-create-kicker">MAKE IT YOURS</p>
+            <h2 id="landing-create-title">Build your own floorplan</h2>
+            <p>Draw rooms, add doors and windows, then route cables through the layout you made.</p>
+            <button type="button" onClick={onOpenEditor}>Start drawing <ArrowRight size={17} /></button>
+          </div>
+          <figure className="landing-create-figure">
+            <img src={floorplanImage} alt="A custom floorplan in the GridMind editor with rooms, doors, three hubs and their cable routes"
+              loading="lazy" decoding="async" />
+            <figcaption>CUSTOM DRAWN PLAN / GRIDMIND EDITOR</figcaption>
+          </figure>
+        </section>
+
         <LandingStory onOpenEditor={onOpenEditor} />
       </main>
     </div>
